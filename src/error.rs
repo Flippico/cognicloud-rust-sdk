@@ -1,6 +1,9 @@
 /// Every failure the SDK reports. `status` is the HTTP status, or `0` when no answer came back.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A file is larger than the gateway accepts (10 MB decoded).
+    #[error("a file may be at most 10 MB")]
+    FileTooLarge,
     /// CogniCloud answered with an error. `code` is its stable error code.
     #[error("CogniCloud error {status} {code}: {message}")]
     Api {
@@ -41,6 +44,7 @@ impl Error {
             Error::Timeout => "timeout",
             Error::Network(_) => "network_error",
             Error::Config(_) => "config",
+            Error::FileTooLarge => "file_too_large",
             Error::Env(_) => "env",
             Error::Decode(_) => "decode",
         }

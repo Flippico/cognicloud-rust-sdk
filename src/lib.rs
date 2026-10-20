@@ -5,14 +5,18 @@
 mod client;
 mod endpoints;
 mod error;
+mod files;
 mod http;
 mod secret;
 
-pub use client::{Client, ClientBuilder, EndpointClient, Locale, Options};
+pub use client::{encode_tenant, Client, ClientBuilder, EndpointClient, Locale, Options};
 pub use endpoints::{
     CreateEndpoint, CreatedEndpoint, DailyUsage, DailyUsageRange, Endpoint, EndpointStatus,
     EndpointUsage, EndpointsApi, FieldMapping, FinishReason, InvokeResponse, InvokeUsage,
     RotatedCredential, UpdateEndpoint,
 };
 pub use error::{Error, Result};
+pub use files::{
+    image_part, input_file, input_image, input_text, pdf_part, text_part, ImageType, MAX_FILE_BYTES,
+};
 pub use secret::Secret;

@@ -43,7 +43,7 @@ fn options(server: &MockServer) -> Options {
 async fn invokes_the_endpoint_with_its_credential_and_returns_the_canonical_answer() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/invoke/e1"))
+        .and(path("/invoke/636f676e69636c6f7564/e1"))
         .and(header("authorization", "Bearer cc_live_secret"))
         .and(body_json(json!({ "input": "Hi" })))
         .respond_with(ResponseTemplate::new(200).set_body_json(answer()))
@@ -62,7 +62,7 @@ async fn invokes_the_endpoint_with_its_credential_and_returns_the_canonical_answ
 async fn never_retries_an_invoke() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/invoke/e1"))
+        .and(path("/invoke/636f676e69636c6f7564/e1"))
         .respond_with(
             ResponseTemplate::new(503)
                 .set_body_json(json!({ "error": "gateway_unavailable", "message": "x" })),
@@ -91,7 +91,7 @@ async fn never_retries_an_invoke() {
 async fn reports_a_refusal_with_its_stable_code() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/invoke/e1"))
+        .and(path("/invoke/636f676e69636c6f7564/e1"))
         .respond_with(ResponseTemplate::new(409).set_body_json(
             json!({ "error": "endpoint_paused", "message": "The endpoint is paused." }),
         ))
@@ -113,7 +113,8 @@ async fn creates_an_endpoint_with_the_session_token_and_returns_its_one_time_cre
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/endpoints"))
-        .and(header("x-amadeus-token", "amadeus-session"))
+        .and(header("authorization", "Bearer amadeus-session"))
+        .and(header("tenant_id", "cognicloud"))
         .and(header("accept-language", "pl"))
         .and(body_json(json!({ "name": "Support bot", "providerId": "azure-openai", "model": "gpt-5-mini", "tokenLimit": 1000 })))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({ "endpoint": endpoint(), "credential": { "secret": "cc_live_new" } })))
@@ -263,4 +264,75 @@ async fn reports_a_network_failure_with_status_zero() {
 async fn the_builder_requires_a_token() {
     let error = Client::builder().build().unwrap_err();
     assert!(matches!(error, Error::Config(_)));
+}
+
+#[tokio::test]
+async fn an_issued_invoke_url_is_used_as_it_is() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/invoke/636f676e69636c6f7564/e1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(answer()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let url = format!("{}/v1/invoke/636f676e69636c6f7564/e1", server.uri());
+    let client = EndpointClient::from_url(url.clone(), "k");
+    assert_eq!(client.url(), url);
+    let result: InvokeResponse = client.invoke(&json!({ "input": "Hi" })).await.unwrap();
+    assert_eq!(result.output, "Hello");
+}
+
+#[tokio::test]
+async fn a_pdf_part_reaches_the_gateway_unchanged() {
+    use cognicloud::{pdf_part, text_part};
+
+    let server = MockServer::start().await;
+    let body = json!({ "messages": [{ "role": "user", "content": [
+        text_part("Match this CV."),
+        pdf_part("cv.pdf", b"%PDF-1.4").unwrap(),
+    ] }] });
+    Mock::given(method("POST"))
+        .and(path("/invoke/636f676e69636c6f7564/e1"))
+        .and(body_json(body.clone()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(answer()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = EndpointClient::with_options("e1", "k", &options(&server)).unwrap();
+    client.invoke::<_, InvokeResponse>(&body).await.unwrap();
+}
+
+#[test]
+fn file_parts_are_base64_data_urls_and_large_files_are_refused() {
+    use cognicloud::{image_part, pdf_part, ImageType};
+
+    assert_eq!(
+        pdf_part("cv.pdf", b"%PDF-1.4").unwrap(),
+        json!({ "type": "file", "file": { "filename": "cv.pdf", "file_data": "data:application/pdf;base64,JVBERi0xLjQ=" } })
+    );
+    assert_eq!(
+        image_part(ImageType::Png, &[137, 80, 78, 71]).unwrap()["image_url"]["url"],
+        "data:image/png;base64,iVBORw=="
+    );
+    let too_large = vec![0_u8; cognicloud::MAX_FILE_BYTES + 1];
+    assert!(matches!(
+        pdf_part("big.pdf", &too_large),
+        Err(Error::FileTooLarge)
+    ));
+    assert_eq!(Error::FileTooLarge.code(), "file_too_large");
+}
+
+#[test]
+fn the_default_tenant_is_named_in_hex_in_the_invoke_url() {
+    assert_eq!(
+        cognicloud::encode_tenant("cognicloud"),
+        "636f676e69636c6f7564"
+    );
+    let client = EndpointClient::new("e1", "k");
+    assert_eq!(
+        client.url(),
+        "https://cognicloud.flippi.co/api/v1/ai-gateway/invoke/636f676e69636c6f7564/e1"
+    );
 }

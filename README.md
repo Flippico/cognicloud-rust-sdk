@@ -2,7 +2,7 @@
 
 Call CogniCloud AI Gateway endpoints and manage them from async Rust on Tokio. Same behaviour as [`@cognicloud/sdk`](https://github.com/Flippico/cognicloud-js-sdk).
 
-> Version 0.1.0. The first version covers AI Gateway endpoints. Agents, browser, scraping, vault and activity come later. See [CHANGELOG.md](./CHANGELOG.md).
+> Version 0.2.0. Covers AI Gateway endpoints; agents, browser, scraping, vault and activity come later. See [CHANGELOG.md](./CHANGELOG.md).
 
 ## Install
 
@@ -35,6 +35,22 @@ async fn main() -> Result<(), cognicloud::Error> {
 ```
 
 `invoke` is generic: use [`InvokeResponse`] for the shape every model returns, or deserialise into your own struct. It is never retried, because a retried call can be billed twice.
+
+## Send a PDF or an image
+
+```rust
+use cognicloud::{EndpointClient, pdf_part, text_part};
+use serde_json::json;
+
+let endpoint = EndpointClient::from_url(std::env::var("COGNICLOUD_ENDPOINT_URL")?, std::env::var("COGNICLOUD_KEY")?);
+let cv = std::fs::read("cv.pdf")?;
+
+let answer: serde_json::Value = endpoint
+    .invoke(&json!({ "messages": [{ "role": "user", "content": [text_part("Match this CV to the job."), pdf_part("cv.pdf", &cv)?] }] }))
+    .await?;
+```
+
+Files go up to 10 MB. The gateway reserves a quarter of a file's size in tokens before the call, so an endpoint's monthly limit must cover it.
 
 ## Manage endpoints
 
@@ -93,7 +109,8 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 
 | Option | Default | |
 | --- | --- | --- |
-| `base_url` | `https://api.cognicloud.dev/v1` | Point at another environment. |
+| `base_url` | `https://cognicloud.flippi.co/api/v1/ai-gateway` | Point at another environment. |
+| `tenant` | `"cognicloud"` | The workspace to manage, and the tenant that owns an endpoint called by ID. |
 | `locale` | `Locale::En` | `Accept-Language` for localised responses. |
 | `timeout` | 30 seconds | Per request. |
 | `max_retries` | `2` | For `429` and `5xx`, on calls that are safe to repeat. |

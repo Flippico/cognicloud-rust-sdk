@@ -16,6 +16,7 @@ pub(crate) struct Http {
 
 pub(crate) struct Call<'a> {
     pub method: Method,
+    /// Relative to the base URL, or an absolute URL (an endpoint's issued invoke URL).
     pub path: String,
     pub headers: Vec<(&'static str, String)>,
     pub query: Vec<(&'a str, String)>,
@@ -34,6 +35,13 @@ fn is_retryable(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 504)
 }
 
+fn target(base_url: &str, path: &str) -> String {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return path.to_owned();
+    }
+    format!("{}{}", base_url.trim_end_matches('/'), path)
+}
+
 fn backoff(attempt: u32) -> Duration {
     Duration::from_millis(250 * 2u64.pow(attempt.min(6)))
 }
@@ -45,10 +53,7 @@ impl Http {
         loop {
             let mut request = self
                 .client
-                .request(
-                    call.method.clone(),
-                    format!("{}{}", self.base_url.trim_end_matches('/'), call.path),
-                )
+                .request(call.method.clone(), target(&self.base_url, &call.path))
                 .timeout(self.timeout)
                 .header("accept", "application/json")
                 .header("accept-language", self.locale.as_str())

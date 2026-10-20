@@ -155,15 +155,23 @@ struct DailyUsageList {
 pub struct EndpointsApi<'a> {
     http: &'a Http,
     token: &'a str,
+    tenant: &'a str,
 }
 
 impl<'a> EndpointsApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &'a str) -> Self {
-        Self { http, token }
+    pub(crate) fn new(http: &'a Http, token: &'a str, tenant: &'a str) -> Self {
+        Self {
+            http,
+            token,
+            tenant,
+        }
     }
 
     fn session(&self) -> Vec<(&'static str, String)> {
-        vec![("x-amadeus-token", self.token.to_owned())]
+        vec![
+            ("authorization", format!("Bearer {}", self.token)),
+            ("tenant_id", self.tenant.to_owned()),
+        ]
     }
 
     fn path(id: &str, rest: &str) -> String {

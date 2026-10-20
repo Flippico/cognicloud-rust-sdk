@@ -28,8 +28,10 @@ impl Locale {
 /// Settings shared by every client. The defaults match the JavaScript SDK.
 #[derive(Debug, Clone)]
 pub struct Options {
-    /// Default `https://api.cognicloud.dev/v1`.
+    /// Default `https://cognicloud.flippi.co/api/v1/ai-gateway`.
     pub base_url: String,
+    /// The tenant (workspace) to manage, and the tenant that owns an endpoint called by ID. Default `"cognicloud"`.
+    pub tenant: String,
     pub locale: Locale,
     /// Per request. Default 30 seconds.
     pub timeout: Duration,
@@ -40,7 +42,8 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            base_url: "https://api.cognicloud.dev/v1".to_owned(),
+            base_url: "https://cognicloud.flippi.co/api/v1/ai-gateway".to_owned(),
+            tenant: "cognicloud".to_owned(),
             locale: Locale::En,
             timeout: Duration::from_secs(30),
             max_retries: 2,
@@ -61,30 +64,68 @@ fn http(options: &Options) -> Result<Http> {
     })
 }
 
+/// How an invoke URL names its tenant: the tenant's name as UTF-8, in lowercase hex.
+pub fn encode_tenant(tenant: &str) -> String {
+    tenant.bytes().map(|byte| format!("{byte:02x}")).collect()
+}
+
+pub(crate) fn encode(segment: &str) -> String {
+    segment
+        .bytes()
+        .flat_map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                vec![byte as char]
+            }
+            _ => format!("%{byte:02X}").chars().collect(),
+        })
+        .collect()
+}
+
 /// Calls one AI Gateway endpoint with its own credential.
 pub struct EndpointClient {
-    endpoint_id: String,
+    url: String,
     credential: String,
     http: Http,
 }
 
 impl EndpointClient {
-    /// A client with the default [`Options`].
+    /// A client for the endpoint `endpoint_id` in the default tenant, with the default [`Options`].
     pub fn new(endpoint_id: impl Into<String>, credential: impl Into<String>) -> Self {
         Self::with_options(endpoint_id, credential, &Options::default())
             .expect("the default HTTP client always builds")
     }
 
+    /// A client for the endpoint `endpoint_id`, with the given options.
     pub fn with_options(
         endpoint_id: impl Into<String>,
         credential: impl Into<String>,
         options: &Options,
     ) -> Result<Self> {
+        let base = options.base_url.trim_end_matches('/');
+        let url = format!(
+            "{base}/invoke/{}/{}",
+            encode_tenant(&options.tenant),
+            encode(&endpoint_id.into())
+        );
         Ok(Self {
-            endpoint_id: endpoint_id.into(),
+            url,
             credential: credential.into(),
             http: http(options)?,
         })
+    }
+
+    /// A client for an invoke URL as CogniCloud issued it (the endpoint's `url`).
+    pub fn from_url(url: impl Into<String>, credential: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            credential: credential.into(),
+            http: http(&Options::default()).expect("the default HTTP client always builds"),
+        }
+    }
+
+    /// The address every invoke is sent to.
+    pub fn url(&self) -> &str {
+        &self.url
     }
 
     /// Sends the body through the endpoint's request mapping. Choose the response type: [`InvokeResponse`] is
@@ -100,7 +141,7 @@ impl EndpointClient {
         self.http
             .send(Call {
                 method: reqwest::Method::POST,
-                path: format!("/invoke/{}", encode(&self.endpoint_id)),
+                path: self.url.clone(),
                 headers: vec![("authorization", format!("Bearer {}", self.credential))],
                 query: Vec::new(),
                 body: Some(body),
@@ -113,7 +154,7 @@ impl EndpointClient {
 impl fmt::Debug for EndpointClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EndpointClient")
-            .field("endpoint_id", &self.endpoint_id)
+            .field("url", &self.url)
             .field("credential", &"Secret(****)")
             .finish()
     }
@@ -127,7 +168,7 @@ pub struct ClientBuilder {
 }
 
 impl ClientBuilder {
-    /// The signed-in person's Amadeus session token, sent as `x-amadeus-token`. Required.
+    /// The signed-in person's Amadeus session token, sent as `Authorization: Bearer`. Required.
     pub fn token(mut self, token: impl Into<String>) -> Self {
         self.token = Some(token.into());
         self
@@ -140,6 +181,12 @@ impl ClientBuilder {
 
     pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
         self.options.base_url = base_url.into();
+        self
+    }
+
+    /// The tenant (workspace) to manage, sent as the `tenant_id` header. Default `"cognicloud"`.
+    pub fn tenant(mut self, tenant: impl Into<String>) -> Self {
+        self.options.tenant = tenant.into();
         self
     }
 
@@ -159,6 +206,7 @@ impl ClientBuilder {
             .ok_or_else(|| Error::Config("a session token is required".to_owned()))?;
         Ok(Client {
             token,
+            tenant: self.options.tenant.clone(),
             http: http(&self.options)?,
         })
     }
@@ -167,6 +215,7 @@ impl ClientBuilder {
 /// Manages CogniCloud resources. This first version covers AI Gateway endpoints.
 pub struct Client {
     token: String,
+    tenant: String,
     http: Http,
 }
 
@@ -176,26 +225,15 @@ impl Client {
     }
 
     pub fn endpoints(&self) -> EndpointsApi<'_> {
-        EndpointsApi::new(&self.http, &self.token)
+        EndpointsApi::new(&self.http, &self.token, &self.tenant)
     }
 }
 
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client")
+            .field("tenant", &self.tenant)
             .field("token", &"Secret(****)")
             .finish()
     }
-}
-
-pub(crate) fn encode(segment: &str) -> String {
-    segment
-        .bytes()
-        .flat_map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                vec![byte as char]
-            }
-            _ => format!("%{byte:02X}").chars().collect(),
-        })
-        .collect()
 }

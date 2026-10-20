@@ -2,6 +2,23 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-20
+
+Aligns the crate with the gateway as deployed, as the JavaScript SDK does, and adds file support.
+
+### Breaking
+
+- The default `base_url` is `https://cognicloud.flippi.co/api/v1/ai-gateway`. The old default, `https://api.cognicloud.dev/v1`, does not resolve.
+- `EndpointClient` posts to `/invoke/{tenant}/{endpoint_id}`, the address the gateway issues. 0.1.0 posted to `/invoke/{endpoint_id}`, which the gateway answers with `404 not_found`.
+- Management calls send the session token as `Authorization: Bearer <token>` and the workspace as the `tenant_id` header. 0.1.0 sent `x-amadeus-token`, which the gateway ignores.
+
+### Added
+
+- `EndpointClient::from_url(url, credential)` for the invoke URL CogniCloud issued (the endpoint's `url`), and `EndpointClient::url()`.
+- `Options::tenant` and `ClientBuilder::tenant` (default `"cognicloud"`), and `encode_tenant(name)`.
+- File helpers: `text_part`, `pdf_part`, `image_part` and `ImageType` for chat messages, and `input_text`, `input_file`, `input_image` for Responses input. Each file becomes a base64 data URL. `MAX_FILE_BYTES` is 10 MB, the gateway's limit.
+- `Error::FileTooLarge` (code `file_too_large`), returned before anything is sent.
+
 ## [0.1.0] - 2026-10-20
 
 First version. Covers AI Gateway endpoints only.
