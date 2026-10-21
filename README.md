@@ -2,7 +2,7 @@
 
 Call CogniCloud AI Gateway endpoints and manage them from async Rust on Tokio. Same behaviour as [`@cognicloud/sdk`](https://github.com/Flippico/cognicloud-js-sdk).
 
-> Version 0.2.0. Covers AI Gateway endpoints; agents, browser, scraping, vault and activity come later. See [CHANGELOG.md](./CHANGELOG.md).
+> Version 0.3.0. Covers AI Gateway endpoints and browser sessions; agents, scraping, vault and activity come later. See [CHANGELOG.md](./CHANGELOG.md).
 
 ## Install
 

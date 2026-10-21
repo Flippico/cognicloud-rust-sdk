@@ -4,6 +4,7 @@ use std::time::Duration;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::browser::BrowserApi;
 use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
@@ -37,6 +38,8 @@ pub struct Options {
     pub timeout: Duration,
     /// For `429` and `5xx`, on calls that are safe to repeat. Default 2.
     pub max_retries: u32,
+    /// The browser service's base. Default `https://cognicloud.flippi.co/api/v1/browser`.
+    pub browser_base_url: String,
 }
 
 impl Default for Options {
@@ -47,6 +50,7 @@ impl Default for Options {
             locale: Locale::En,
             timeout: Duration::from_secs(30),
             max_retries: 2,
+            browser_base_url: "https://cognicloud.flippi.co/api/v1/browser".to_owned(),
         }
     }
 }
@@ -200,23 +204,32 @@ impl ClientBuilder {
         self
     }
 
+    pub fn browser_base_url(mut self, browser_base_url: impl Into<String>) -> Self {
+        self.options.browser_base_url = browser_base_url.into();
+        self
+    }
+
     pub fn build(self) -> Result<Client> {
         let token = self
             .token
             .ok_or_else(|| Error::Config("a session token is required".to_owned()))?;
+        let mut browser = http(&self.options)?;
+        browser.base_url = self.options.browser_base_url.clone();
         Ok(Client {
             token,
             tenant: self.options.tenant.clone(),
             http: http(&self.options)?,
+            browser,
         })
     }
 }
 
-/// Manages CogniCloud resources. This first version covers AI Gateway endpoints.
+/// Manages CogniCloud resources: AI Gateway endpoints and browser sessions.
 pub struct Client {
     token: String,
     tenant: String,
     http: Http,
+    browser: Http,
 }
 
 impl Client {
@@ -226,6 +239,10 @@ impl Client {
 
     pub fn endpoints(&self) -> EndpointsApi<'_> {
         EndpointsApi::new(&self.http, &self.token, &self.tenant)
+    }
+
+    pub fn browser(&self) -> BrowserApi<'_> {
+        BrowserApi::new(&self.browser, &self.token, &self.tenant)
     }
 }
 

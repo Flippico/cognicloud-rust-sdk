@@ -2,6 +2,10 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-21
+
+- Browser sessions: `client.browser().sessions()` creates, lists, reads and stops sessions; `countries()` and `profiles()` return empty lists until those features exist. `Options::browser_base_url` and `ClientBuilder::browser_base_url` point at another environment (default `https://cognicloud.flippi.co/api/v1/browser`). `Options` gained a field, so construct it with `..Options::default()`.
+
 ## [0.2.0] - 2026-10-20
 
 Aligns the crate with the gateway as deployed, as the JavaScript SDK does, and adds file support.

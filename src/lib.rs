@@ -1,7 +1,8 @@
 //! CogniCloud SDK: call AI Gateway endpoints and manage them.
 //!
-//! This first version covers AI Gateway endpoints. Agents, browser, scraping, vault and activity come later.
+//! This version covers AI Gateway endpoints and browser sessions. Agents, scraping, vault and activity come later.
 
+mod browser;
 mod client;
 mod endpoints;
 mod error;
@@ -9,6 +10,10 @@ mod files;
 mod http;
 mod secret;
 
+pub use browser::{
+    BrowserApi, BrowserConcurrency, BrowserProfile, BrowserScreen, BrowserSession,
+    BrowserSessionList, BrowserSessionsApi, BrowserStatus, CreateBrowserSession, ProxyCountry,
+};
 pub use client::{encode_tenant, Client, ClientBuilder, EndpointClient, Locale, Options};
 pub use endpoints::{
     CreateEndpoint, CreatedEndpoint, DailyUsage, DailyUsageRange, Endpoint, EndpointStatus,
