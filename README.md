@@ -18,11 +18,11 @@ Built on `reqwest` with `rustls`. Every request and response is a typed `serde` 
 ## Call an endpoint
 
 ```rust
-use cognicloud::{EndpointClient, InvokeResponse};
+use cognicloud_sdk::{EndpointClient, InvokeResponse};
 use serde_json::json;
 
 #[tokio::main]
-async fn main() -> Result<(), cognicloud::Error> {
+async fn main() -> Result<(), cognicloud_sdk::Error> {
     let endpoint = EndpointClient::new(
         std::env::var("COGNICLOUD_ENDPOINT_ID")?,
         std::env::var("COGNICLOUD_KEY")?,
@@ -39,7 +39,7 @@ async fn main() -> Result<(), cognicloud::Error> {
 ## Send a PDF or an image
 
 ```rust
-use cognicloud::{EndpointClient, pdf_part, text_part};
+use cognicloud_sdk::{EndpointClient, pdf_part, text_part};
 use serde_json::json;
 
 let endpoint = EndpointClient::from_url(std::env::var("COGNICLOUD_ENDPOINT_URL")?, std::env::var("COGNICLOUD_KEY")?);
@@ -57,7 +57,7 @@ Files go up to 10 MB. The gateway reserves a quarter of a file's size in tokens 
 Management calls use the signed-in person's Amadeus session token.
 
 ```rust
-use cognicloud::{Client, CreateEndpoint, DailyUsageRange, Locale, UpdateEndpoint};
+use cognicloud_sdk::{Client, CreateEndpoint, DailyUsageRange, Locale, UpdateEndpoint};
 
 let client = Client::builder().token(amadeus_token).locale(Locale::En).build()?;
 
@@ -93,7 +93,7 @@ Secrets are wrapped in `Secret<T>`: their `Debug` output is `Secret(****)`, and 
 ## Errors
 
 ```rust
-use cognicloud::Error;
+use cognicloud_sdk::Error;
 
 match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
     Err(error) if error.code() == "credits_exhausted" => {

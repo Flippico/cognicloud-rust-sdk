@@ -1,4 +1,4 @@
-use cognicloud::{BrowserStatus, Client, CreateBrowserSession, Error};
+use cognicloud_sdk::{BrowserStatus, Client, CreateBrowserSession, Error};
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

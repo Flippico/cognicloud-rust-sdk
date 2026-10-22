@@ -1,4 +1,4 @@
-use cognicloud::{
+use cognicloud_sdk::{
     Client, CreateEndpoint, DailyUsageRange, EndpointClient, EndpointStatus, Error, FinishReason,
     InvokeResponse, Locale, Options, UpdateEndpoint,
 };
@@ -285,7 +285,7 @@ async fn an_issued_invoke_url_is_used_as_it_is() {
 
 #[tokio::test]
 async fn a_pdf_part_reaches_the_gateway_unchanged() {
-    use cognicloud::{pdf_part, text_part};
+    use cognicloud_sdk::{pdf_part, text_part};
 
     let server = MockServer::start().await;
     let body = json!({ "messages": [{ "role": "user", "content": [
@@ -306,7 +306,7 @@ async fn a_pdf_part_reaches_the_gateway_unchanged() {
 
 #[test]
 fn file_parts_are_base64_data_urls_and_large_files_are_refused() {
-    use cognicloud::{image_part, pdf_part, ImageType};
+    use cognicloud_sdk::{image_part, pdf_part, ImageType};
 
     assert_eq!(
         pdf_part("cv.pdf", b"%PDF-1.4").unwrap(),
@@ -316,7 +316,7 @@ fn file_parts_are_base64_data_urls_and_large_files_are_refused() {
         image_part(ImageType::Png, &[137, 80, 78, 71]).unwrap()["image_url"]["url"],
         "data:image/png;base64,iVBORw=="
     );
-    let too_large = vec![0_u8; cognicloud::MAX_FILE_BYTES + 1];
+    let too_large = vec![0_u8; cognicloud_sdk::MAX_FILE_BYTES + 1];
     assert!(matches!(
         pdf_part("big.pdf", &too_large),
         Err(Error::FileTooLarge)
@@ -327,7 +327,7 @@ fn file_parts_are_base64_data_urls_and_large_files_are_refused() {
 #[test]
 fn the_default_tenant_is_named_in_hex_in_the_invoke_url() {
     assert_eq!(
-        cognicloud::encode_tenant("cognicloud"),
+        cognicloud_sdk::encode_tenant("cognicloud"),
         "636f676e69636c6f7564"
     );
     let client = EndpointClient::new("e1", "k");
