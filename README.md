@@ -8,7 +8,7 @@ Call CogniCloud AI Gateway endpoints and manage them from async Rust on Tokio. S
 
 ```toml
 [dependencies]
-cognicloud = "0.1"
+cognicloud-sdk = "0.4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde_json = "1"
 ```
