@@ -119,6 +119,31 @@ client.browser().sessions().stop(&session.id).await?;
 - `sessions().list()` returns the workspace's sessions, newest first, with `concurrency.active` and `concurrency.limit`. A start beyond the limit fails with status `429` and code `concurrency_limit`.
 - Proxy countries, profiles, screen sizes, captcha solving and recording are not available yet. `countries()` and `profiles()` return empty lists, and `CreateBrowserSession` has no field for those options.
 
+## Responses with MCP tools
+
+```rust
+use cognicloud_sdk::{McpTool, ResponsesRequest, ToolChoice};
+
+let answer = endpoint
+    .responses(&ResponsesRequest {
+        instructions: Some("Check invoices.".into()),
+        tools: vec![McpTool::new("ksef").allowed_tools(["validate_invoice_xml"])],
+        tool_choice: Some(ToolChoice::Required),
+        ..ResponsesRequest::text("Is this invoice valid?")
+    })
+    .await?;
+
+// Continue the same conversation on the same endpoint:
+let next = endpoint
+    .responses(&ResponsesRequest {
+        previous_response_id: answer.response_id.clone(),
+        ..ResponsesRequest::text("And this one?")
+    })
+    .await?;
+```
+
+The server label must be one the platform has configured. Callers never send a server address, credentials or approval settings.
+
 ## Errors
 
 ```rust

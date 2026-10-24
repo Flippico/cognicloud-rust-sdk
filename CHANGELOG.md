@@ -2,6 +2,16 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-10-24
+
+### Added
+
+- `EndpointClient::responses(&ResponsesRequest)` sends a Responses call: text or messages, optional MCP tools, `tool_choice`, `instructions`, `max_output_tokens`, and `previous_response_id` to continue an earlier response on the same endpoint.
+- `McpTool::new(label).allowed_tools([...])`. The platform supplies the MCP server's address and credentials; callers name a server by label only.
+- `ResponseResult` carries `response_id` and `output_items` (tool calls, tool lists and messages) next to the usual answer.
+
+Existing methods are unchanged. Streaming is not part of this version.
+
 ## [0.4.0] - 2026-10-22
 
 ### Breaking

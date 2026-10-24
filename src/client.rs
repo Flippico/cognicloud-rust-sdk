@@ -8,6 +8,7 @@ use crate::browser::BrowserApi;
 use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
+use crate::responses::{ResponseResult, ResponsesRequest};
 
 /// Language for localised responses, sent as `Accept-Language`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -152,6 +153,15 @@ impl EndpointClient {
                 retry: false,
             })
             .await
+    }
+}
+
+impl EndpointClient {
+    /// Sends a Responses call: text or messages, optional MCP tools, and optionally an earlier response to continue.
+    ///
+    /// Never retried, because a retried call can be billed twice.
+    pub async fn responses(&self, request: &ResponsesRequest) -> Result<ResponseResult> {
+        self.invoke(request).await
     }
 }
 
