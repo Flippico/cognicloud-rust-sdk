@@ -90,6 +90,35 @@ Also available: `endpoints().list()` and `endpoints().get(id)`.
 
 Secrets are wrapped in `Secret<T>`: their `Debug` output is `Secret(****)`, and you read the value with `expose()`.
 
+## Browser sessions
+
+A browser session is a Chrome that your agent drives over the Chrome DevTools Protocol. Start one, connect your automation library to its `cdp_url`, and stop it when you are done. The example uses `chromiumoxide` and `futures`:
+
+```rust
+use cognicloud_sdk::{Client, CreateBrowserSession};
+use futures::StreamExt;
+
+let client = Client::builder().token(amadeus_token).build()?;
+let session = client
+    .browser()
+    .sessions()
+    .create(&CreateBrowserSession { timeout_minutes: Some(15) })
+    .await?;
+
+let (browser, mut handler) = chromiumoxide::Browser::connect(session.cdp_url.clone().unwrap()).await?;
+tokio::spawn(async move { while handler.next().await.is_some() {} });
+let page = browser.new_page("https://example.com").await?;
+println!("{:?}", page.get_title().await?);
+
+client.browser().sessions().stop(&session.id).await?;
+```
+
+- `timeout_minutes` is 1 to 240 and defaults to 15 (`None` uses the default). The session stops by itself when the timeout passes.
+- Closing the CDP connection does not stop the session. Call `sessions().stop` as above.
+- `status` is `BrowserStatus::Active` or `BrowserStatus::Stopped`. `cdp_url` and `live_url` are `None` once the session has stopped. `live_url` is a page where a person can watch and take over the browser.
+- `sessions().list()` returns the workspace's sessions, newest first, with `concurrency.active` and `concurrency.limit`. A start beyond the limit fails with status `429` and code `concurrency_limit`.
+- Proxy countries, profiles, screen sizes, captcha solving and recording are not available yet. `countries()` and `profiles()` return empty lists, and `CreateBrowserSession` has no field for those options.
+
 ## Errors
 
 ```rust
@@ -114,6 +143,7 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 | `locale` | `Locale::En` | `Accept-Language` for localised responses. |
 | `timeout` | 30 seconds | Per request. |
 | `max_retries` | `2` | For `429` and `5xx`, on calls that are safe to repeat. |
+| `browser_base_url` | `https://cognicloud.flippi.co/api/v1/browser` | Browser sessions service. |
 
 Set them on the builder, or with `Options` for `EndpointClient::with_options`.
 
