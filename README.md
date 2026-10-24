@@ -144,6 +144,19 @@ let next = endpoint
 
 The server label must be one the platform has configured. Callers never send a server address, credentials or approval settings.
 
+## Embeddings
+
+```rust
+use cognicloud_sdk::EmbeddingsRequest;
+
+let result = endpoint
+    .embeddings(&EmbeddingsRequest::texts(["first text", "second text"]).dimensions(256))
+    .await?;
+let first = &result.data[0].embedding;
+```
+
+The endpoint must point at an embedding deployment. Each call is billed as prompt tokens.
+
 ## Errors
 
 ```rust

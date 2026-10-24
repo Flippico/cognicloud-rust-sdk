@@ -2,6 +2,12 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-10-24
+
+### Added
+
+- `EndpointClient::embeddings(&EmbeddingsRequest)` embeds one text or up to 256 texts through the endpoint's embedding deployment, with optional `dimensions`. Returns one vector per input in input order, and bills the prompt tokens.
+
 ## [0.5.0] - 2026-10-24
 
 ### Added

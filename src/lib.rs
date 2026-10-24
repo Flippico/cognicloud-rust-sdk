@@ -4,6 +4,7 @@
 
 mod browser;
 mod client;
+mod embeddings;
 mod endpoints;
 mod error;
 mod files;
@@ -16,6 +17,7 @@ pub use browser::{
     BrowserSessionList, BrowserSessionsApi, BrowserStatus, CreateBrowserSession, ProxyCountry,
 };
 pub use client::{encode_tenant, Client, ClientBuilder, EndpointClient, Locale, Options};
+pub use embeddings::{Embedding, EmbeddingInput, EmbeddingsRequest, EmbeddingsResult};
 pub use endpoints::{
     CreateEndpoint, CreatedEndpoint, DailyUsage, DailyUsageRange, Endpoint, EndpointStatus,
     EndpointUsage, EndpointsApi, FieldMapping, FinishReason, InvokeResponse, InvokeUsage,

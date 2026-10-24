@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::browser::BrowserApi;
+use crate::embeddings::{EmbeddingsRequest, EmbeddingsResult};
 use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
@@ -142,16 +143,32 @@ impl EndpointClient {
         Req: Serialize + ?Sized,
         Res: DeserializeOwned,
     {
+        self.invoke_at(self.url.clone(), body).await
+    }
+
+    async fn invoke_at<Req, Res>(&self, path: String, body: &Req) -> Result<Res>
+    where
+        Req: Serialize + ?Sized,
+        Res: DeserializeOwned,
+    {
         let body = serde_json::to_value(body).map_err(|error| Error::Config(error.to_string()))?;
         self.http
             .send(Call {
                 method: reqwest::Method::POST,
-                path: self.url.clone(),
+                path,
                 headers: vec![("authorization", format!("Bearer {}", self.credential))],
                 query: Vec::new(),
                 body: Some(body),
                 retry: false,
             })
+            .await
+    }
+}
+
+impl EndpointClient {
+    /// Embeds text through the endpoint's embedding deployment. Billed as prompt tokens. Never retried.
+    pub async fn embeddings(&self, request: &EmbeddingsRequest) -> Result<EmbeddingsResult> {
+        self.invoke_at(format!("{}/embeddings", self.url), request)
             .await
     }
 }
