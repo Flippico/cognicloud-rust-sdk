@@ -2,6 +2,15 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-10-25
+
+### Added
+
+- `EndpointClient::stream(&body)` streams a Chat or Responses call: it sets `stream: true` and returns a `ResponseStream`.
+- `EndpointClient::stream_responses(&ResponsesRequest)` streams a Responses call with tools or chaining.
+- `ResponseStream::next()` yields `StreamEvent::Delta(text)` as text arrives, then one `StreamEvent::Done(ResponseResult)`. A provider failure is `StreamEvent::Error { code, message }`, and a stream that closes early is `Error` with code `stream_ended`.
+- Streams are never retried, and have no total timeout: the gateway ends them at its own limit. Dropping a stream closes the connection; the gateway still settles the call.
+
 ## [0.6.0] - 2026-10-24
 
 ### Added

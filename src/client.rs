@@ -10,6 +10,7 @@ use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
 use crate::responses::{ResponseResult, ResponsesRequest};
+use crate::stream::ResponseStream;
 
 /// Language for localised responses, sent as `Accept-Language`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -166,6 +167,37 @@ impl EndpointClient {
 }
 
 impl EndpointClient {
+    /// Streams a Chat or Responses call: sets `stream: true` on the body and returns its events as they arrive. The
+    /// body must be a JSON object. Never retried.
+    pub async fn stream<Req>(&self, body: &Req) -> Result<ResponseStream>
+    where
+        Req: Serialize + ?Sized,
+    {
+        let mut body =
+            serde_json::to_value(body).map_err(|error| Error::Config(error.to_string()))?;
+        let object = body
+            .as_object_mut()
+            .ok_or_else(|| Error::Config("a streamed body must be a JSON object".to_owned()))?;
+        object.insert("stream".to_owned(), serde_json::Value::Bool(true));
+        let response = self
+            .http
+            .open(Call {
+                method: reqwest::Method::POST,
+                path: self.url.clone(),
+                headers: vec![("authorization", format!("Bearer {}", self.credential))],
+                query: Vec::new(),
+                body: Some(body),
+                retry: false,
+            })
+            .await?;
+        Ok(ResponseStream::new(response))
+    }
+
+    /// Streams a Responses call, for tools or chaining. See [`EndpointClient::stream`].
+    pub async fn stream_responses(&self, request: &ResponsesRequest) -> Result<ResponseStream> {
+        self.stream(request).await
+    }
+
     /// Embeds text through the endpoint's embedding deployment. Billed as prompt tokens. Never retried.
     pub async fn embeddings(&self, request: &EmbeddingsRequest) -> Result<EmbeddingsResult> {
         self.invoke_at(format!("{}/embeddings", self.url), request)

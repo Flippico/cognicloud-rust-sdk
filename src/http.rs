@@ -95,17 +95,51 @@ impl Http {
             }
 
             let bytes = response.bytes().await.unwrap_or_default();
-            let body: ErrorBody = serde_json::from_slice(&bytes).unwrap_or_default();
-            return Err(Error::Api {
-                status: status.as_u16(),
-                code: body.error.unwrap_or_else(|| "http_error".to_owned()),
-                message: body.message.unwrap_or_else(|| {
-                    status
-                        .canonical_reason()
-                        .unwrap_or("The request failed.")
-                        .to_owned()
-                }),
-            });
+            return Err(api_error(status, &bytes));
         }
+    }
+
+    /// One attempt, never retried, and no total timeout: the answer is a stream that may run for minutes. The caller
+    /// reads the body as it arrives.
+    pub(crate) async fn open(&self, call: Call<'_>) -> Result<reqwest::Response> {
+        let mut request = self
+            .client
+            .request(call.method.clone(), target(&self.base_url, &call.path))
+            .header("accept", "text/event-stream")
+            .header("accept-language", self.locale.as_str())
+            .query(&call.query);
+        for (name, value) in &call.headers {
+            request = request.header(*name, value.as_str());
+        }
+        if let Some(body) = &call.body {
+            request = request.json(body);
+        }
+        let response = request.send().await.map_err(|error| {
+            if error.is_timeout() {
+                Error::Timeout
+            } else {
+                Error::Network(error)
+            }
+        })?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(response);
+        }
+        let bytes = response.bytes().await.unwrap_or_default();
+        Err(api_error(status, &bytes))
+    }
+}
+
+fn api_error(status: reqwest::StatusCode, bytes: &[u8]) -> Error {
+    let body: ErrorBody = serde_json::from_slice(bytes).unwrap_or_default();
+    Error::Api {
+        status: status.as_u16(),
+        code: body.error.unwrap_or_else(|| "http_error".to_owned()),
+        message: body.message.unwrap_or_else(|| {
+            status
+                .canonical_reason()
+                .unwrap_or("The request failed.")
+                .to_owned()
+        }),
     }
 }

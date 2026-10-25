@@ -157,6 +157,25 @@ let first = &result.data[0].embedding;
 
 The endpoint must point at an embedding deployment. Each call is billed as prompt tokens.
 
+## Streaming
+
+```rust
+use cognicloud_sdk::StreamEvent;
+
+let mut stream = endpoint
+    .stream(&serde_json::json!({ "messages": [{ "role": "user", "content": "Write a haiku." }] }))
+    .await?;
+while let Some(event) = stream.next().await {
+    match event? {
+        StreamEvent::Delta(text) => print!("{text}"),
+        StreamEvent::Done(answer) => println!("\n{} tokens", answer.usage.total_tokens),
+        StreamEvent::Error { code, message } => eprintln!("{code}: {message}"),
+    }
+}
+```
+
+The stream ends after one `Done` or one `Error`. Streams are not retried, so a failed start returns an error before any event.
+
 ## Errors
 
 ```rust

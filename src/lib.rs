@@ -11,6 +11,7 @@ mod files;
 mod http;
 mod responses;
 mod secret;
+mod stream;
 
 pub use browser::{
     BrowserApi, BrowserConcurrency, BrowserProfile, BrowserScreen, BrowserSession,
@@ -29,3 +30,4 @@ pub use files::{
 };
 pub use responses::{McpTool, ResponseResult, ResponsesRequest, ToolChoice};
 pub use secret::Secret;
+pub use stream::{ResponseStream, StreamEvent};
