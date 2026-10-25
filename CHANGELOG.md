@@ -2,6 +2,13 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-10-25
+
+### Added
+
+- `McpTool::server(url, bearer_token)` names an MCP server's address and its bearer token on a tool. The gateway passes them to the provider unchanged, apart from its checks: https, no credentials or fragment, and one `Authorization` header. The token is never shown by `Debug`.
+- A tool without `server` still names only the label, for servers the gateway is configured with.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added

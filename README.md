@@ -142,7 +142,7 @@ let next = endpoint
     .await?;
 ```
 
-The server label must be one the platform has configured. Callers never send a server address, credentials or approval settings.
+To use your own MCP server, name its address and bearer token on the tool with `McpTool::new(label).server(url, token)`. The gateway checks that the address is https, without credentials or a fragment, and sends the token to the provider in the request. It sets approval to `never` itself, and the SDK cannot change that. Tokens are never shown by `Debug`, and the gateway does not store them. A tool without `server` names a server the gateway is configured with.
 
 ## Embeddings
 

@@ -1,7 +1,11 @@
-use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::endpoints::{FinishReason, InvokeUsage};
+use crate::secret::Secret;
 
 /// A Responses call: text or messages in `input`, optional MCP tools, and an earlier response to continue.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -31,13 +35,18 @@ impl ResponsesRequest {
     }
 }
 
-/// An MCP server the platform has configured, called by its label. The gateway supplies the server's address and
-/// credentials, and never asks for approval.
+/// An MCP server a Responses call may use, called by its label. Name the server's `url` and its bearer token with
+/// [`McpTool::server`]; the gateway checks them, sets approval to `never`, and passes them to the provider. Without
+/// `server` the tool names only the label, which the gateway must have configured.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct McpTool {
     #[serde(rename = "type")]
     kind: McpKind,
     pub server_label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<McpHeaders>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allowed_tools: Option<Vec<String>>,
 }
@@ -48,13 +57,47 @@ enum McpKind {
     Mcp,
 }
 
+/// The `Authorization` header of an MCP tool: one bearer token. It is never shown by `Debug`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct McpHeaders {
+    authorization: Secret<String>,
+}
+
+impl fmt::Debug for McpHeaders {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("McpHeaders { Authorization: <redacted> }")
+    }
+}
+
+impl Serialize for McpHeaders {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(1))?;
+        map.serialize_entry(
+            "Authorization",
+            &format!("Bearer {}", self.authorization.expose()),
+        )?;
+        map.end()
+    }
+}
+
 impl McpTool {
     pub fn new(server_label: impl Into<String>) -> Self {
         Self {
             kind: McpKind::Mcp,
             server_label: server_label.into(),
+            server_url: None,
+            headers: None,
             allowed_tools: None,
         }
+    }
+
+    /// Names the server's address and its bearer token. The address must be https, without credentials or a fragment.
+    pub fn server(mut self, url: impl Into<String>, bearer_token: impl Into<String>) -> Self {
+        self.server_url = Some(url.into());
+        self.headers = Some(McpHeaders {
+            authorization: Secret::new(bearer_token.into()),
+        });
+        self
     }
 
     /// Limits the tools the model may call on this server.

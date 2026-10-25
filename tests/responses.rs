@@ -107,3 +107,29 @@ async fn reports_a_refused_tool_as_an_api_error() {
         other => panic!("unexpected error {other:?}"),
     }
 }
+
+#[test]
+fn a_caller_server_serializes_its_url_and_bearer_header_and_hides_the_token_in_debug() {
+    let tool = McpTool::new("ksef")
+        .server("https://ksef-api.flippi.co/mcp/v1", "abc123")
+        .allowed_tools(["validate_invoice_xml"]);
+    let wire = serde_json::to_value(&tool).unwrap();
+    assert_eq!(
+        wire,
+        json!({
+            "type": "mcp",
+            "server_label": "ksef",
+            "server_url": "https://ksef-api.flippi.co/mcp/v1",
+            "headers": {"Authorization": "Bearer abc123"},
+            "allowed_tools": ["validate_invoice_xml"],
+        })
+    );
+    let debug = format!("{tool:?}");
+    assert!(!debug.contains("abc123"), "{debug}");
+}
+
+#[test]
+fn a_label_only_tool_sends_no_address_or_header() {
+    let wire = serde_json::to_value(McpTool::new("ksef")).unwrap();
+    assert_eq!(wire, json!({"type": "mcp", "server_label": "ksef"}));
+}
