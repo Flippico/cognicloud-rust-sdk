@@ -133,3 +133,14 @@ fn a_label_only_tool_sends_no_address_or_header() {
     let wire = serde_json::to_value(McpTool::new("ksef")).unwrap();
     assert_eq!(wire, json!({"type": "mcp", "server_label": "ksef"}));
 }
+
+#[test]
+fn extra_fields_are_sent_at_the_top_level_of_the_body() {
+    let request = ResponsesRequest::text("Hi")
+        .extra("seed", 7)
+        .extra("reasoning", json!({"effort": "low"}));
+    let wire = serde_json::to_value(&request).unwrap();
+    assert_eq!(wire["seed"], 7);
+    assert_eq!(wire["reasoning"], json!({"effort": "low"}));
+    assert_eq!(wire["input"], "Hi");
+}

@@ -176,6 +176,16 @@ while let Some(event) = stream.next().await {
 
 The stream ends after one `Done` or one `Error`. Streams are not retried, so a failed start returns an error before any event.
 
+## Extra provider fields
+
+`ResponsesRequest::extra` adds any field the typed fields do not cover. The gateway passes it to the provider unchanged, except for the fields it sets itself, which it refuses.
+
+```rust
+let request = ResponsesRequest::text("Summarise this ticket.")
+    .extra("seed", 7)
+    .extra("reasoning", serde_json::json!({ "effort": "low" }));
+```
+
 ## Errors
 
 ```rust

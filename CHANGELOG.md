@@ -2,6 +2,12 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-10-25
+
+### Added
+
+- `ResponsesRequest::extra(key, value)` adds any other field, sent to the provider unchanged. The gateway refuses the fields it sets itself (`n`, `best_of`, `background`, `store`, `stream_options`, `prompt`, `conversation`).
+
 ## [0.8.0] - 2026-10-25
 
 ### Added

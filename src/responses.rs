@@ -23,9 +23,19 @@ pub struct ResponsesRequest {
     pub tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
+    /// Any other field, sent to the provider unchanged. The gateway refuses the fields it sets itself, such as `n`,
+    /// `store` and `background`.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, Value>,
 }
 
 impl ResponsesRequest {
+    /// Adds a field the typed fields do not cover, such as `seed` or `reasoning`.
+    pub fn extra(mut self, key: impl Into<String>, value: impl Into<Value>) -> Self {
+        self.extra.insert(key.into(), value.into());
+        self
+    }
+
     /// A request with plain text as its input.
     pub fn text(input: impl Into<String>) -> Self {
         Self {
