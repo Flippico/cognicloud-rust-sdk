@@ -28,7 +28,7 @@ jobs:
             echo "cognicloud-sdk $version is already on crates.io."
             exit 0
           fi
-          cargo test --locked
-          cargo publish --locked
+          cargo test
+          cargo publish
           git tag "v$version"
           git push origin "v$version"
