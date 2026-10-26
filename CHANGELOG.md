@@ -2,6 +2,12 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-10-26
+
+### Added
+
+- `CreateBrowserSession::screen` sets the window size. Chrome starts with it, and the session returns it.
+
 ## [0.11.0] - 2026-10-26
 
 ### Added

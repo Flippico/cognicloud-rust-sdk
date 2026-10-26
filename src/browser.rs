@@ -58,6 +58,9 @@ pub struct CreateBrowserSession {
     /// Start from a saved profile, with the logins it holds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_id: Option<String>,
+    /// The window size: 320 to 6144 wide and 320 to 3456 high. Chrome starts with it. `None` keeps Chrome's default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub screen: Option<BrowserScreen>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
