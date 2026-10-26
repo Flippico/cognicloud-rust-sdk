@@ -92,6 +92,8 @@ Secrets are wrapped in `Secret<T>`: their `Debug` output is `Secret(****)`, and 
 
 ## Browser sessions
 
+Browser calls accept the signed-in person's token, or a browser key. Create a key in the dashboard under **Browser → API keys** and pass it as the token. A key keeps working after its owner signs out. Keys cannot be created through the SDK or the API.
+
 A browser session is a Chrome that your agent drives over the Chrome DevTools Protocol. Start one, connect your automation library to its `cdp_url`, and stop it when you are done. The example uses `chromiumoxide` and `futures`:
 
 ```rust
