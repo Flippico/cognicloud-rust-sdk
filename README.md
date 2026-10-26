@@ -54,7 +54,7 @@ Files go up to 10 MB. The gateway reserves a quarter of a file's size in tokens 
 
 ## Manage endpoints
 
-Management calls use the signed-in person's Amadeus session token.
+Calls act as the account of the token: the signed-in person's Amadeus session token, or a browser key for browser calls. A blank token is refused when the client is built, with `Error::Config`.
 
 ```rust
 use cognicloud_sdk::{Client, CreateEndpoint, DailyUsageRange, Locale, UpdateEndpoint};
