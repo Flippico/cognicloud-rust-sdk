@@ -271,7 +271,12 @@ impl ClientBuilder {
     pub fn build(self) -> Result<Client> {
         let token = self
             .token
-            .ok_or_else(|| Error::Config("a session token is required".to_owned()))?;
+            .filter(|token| !token.trim().is_empty())
+            .ok_or_else(|| {
+                Error::Config(
+                    "a token is required: pass the signed-in person's token, or a browser key for browser calls".to_owned(),
+                )
+            })?;
         let mut browser = http(&self.options)?;
         browser.base_url = self.options.browser_base_url.clone();
         Ok(Client {
