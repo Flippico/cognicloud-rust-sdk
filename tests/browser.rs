@@ -82,6 +82,7 @@ async fn starts_lists_reads_and_stops_sessions_at_the_browser_base() {
         .sessions()
         .create(&CreateBrowserSession {
             timeout_minutes: Some(15),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -123,6 +124,52 @@ async fn returns_the_service_error_code_when_a_session_cannot_start() {
         }
         other => panic!("unexpected error: {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn saves_a_session_as_a_profile_and_starts_from_it() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/browser/sessions/b903c5d0/profile"))
+        .and(header("tenant_id", "acme"))
+        .and(body_json(json!({ "name": "shop login" })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "id": "5f1c9a2e",
+            "name": "shop login",
+            "sizeBytes": 20480,
+            "createdAt": "2026-10-21T10:20:00Z",
+            "lastUsedAt": null,
+            "expiresAt": "2027-01-19T10:20:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/browser/sessions"))
+        .and(body_json(
+            json!({ "timeoutMinutes": 15, "profileId": "5f1c9a2e" }),
+        ))
+        .respond_with(ResponseTemplate::new(201).set_body_json(session()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = client(&server).await;
+
+    let profile = client
+        .browser()
+        .sessions()
+        .save_profile("b903c5d0", "shop login")
+        .await
+        .unwrap();
+    assert_eq!(profile.id, "5f1c9a2e");
+    assert_eq!(profile.size_bytes, 20480);
+    assert_eq!(profile.expires_at, "2027-01-19T10:20:00Z");
+
+    let options = CreateBrowserSession {
+        timeout_minutes: Some(15),
+        profile_id: Some(profile.id),
+    };
+    client.browser().sessions().create(&options).await.unwrap();
 }
 
 #[tokio::test]
