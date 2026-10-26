@@ -168,6 +168,7 @@ async fn saves_a_session_as_a_profile_and_starts_from_it() {
     let options = CreateBrowserSession {
         timeout_minutes: Some(15),
         profile_id: Some(profile.id),
+        ..Default::default()
     };
     client.browser().sessions().create(&options).await.unwrap();
 }
@@ -188,6 +189,38 @@ async fn lists_countries_and_profiles_as_empty_until_they_exist() {
     let client = client(&server).await;
     assert!(client.browser().countries().await.unwrap().is_empty());
     assert!(client.browser().profiles().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_session_takes_a_window_size_and_returns_it() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/browser/sessions"))
+        .and(body_json(json!({ "timeoutMinutes": 15, "screen": { "width": 1280, "height": 720 } })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "id": "b903c5d0", "status": "active",
+            "cdpUrl": "wss://example.test/cdp", "liveUrl": "https://example.test/live",
+            "profileId": null, "proxyCountryCode": null, "solveCaptchas": false, "recording": false,
+            "screen": { "width": 1280, "height": 720 },
+            "timeoutAt": "2026-10-21T10:15:00Z", "startedAt": "2026-10-21T10:00:00Z", "finishedAt": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = client(&server).await;
+    let options = CreateBrowserSession {
+        timeout_minutes: Some(15),
+        screen: Some(cognicloud_sdk::BrowserScreen {
+            width: 1280,
+            height: 720,
+        }),
+        ..Default::default()
+    };
+    let session = client.browser().sessions().create(&options).await.unwrap();
+    assert_eq!(
+        session.screen.map(|screen| (screen.width, screen.height)),
+        Some((1280, 720))
+    );
 }
 
 #[tokio::test]
