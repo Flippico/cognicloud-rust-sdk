@@ -25,6 +25,15 @@ pub(crate) struct Call<'a> {
     pub retry: bool,
 }
 
+/// A body sent as it is, with its own content type. An upload is sent once, never retried.
+pub(crate) struct RawCall<'a> {
+    pub path: String,
+    pub headers: Vec<(&'static str, String)>,
+    pub query: Vec<(&'a str, String)>,
+    pub body: Vec<u8>,
+    pub content_type: &'static str,
+}
+
 #[derive(Default, serde::Deserialize)]
 struct ErrorBody {
     error: Option<String>,
@@ -97,6 +106,36 @@ impl Http {
             let bytes = response.bytes().await.unwrap_or_default();
             return Err(api_error(status, &bytes));
         }
+    }
+
+    pub(crate) async fn send_raw<T: DeserializeOwned>(&self, call: RawCall<'_>) -> Result<T> {
+        let mut request = self
+            .client
+            .post(target(&self.base_url, &call.path))
+            .timeout(self.timeout)
+            .header("accept", "application/json")
+            .header("accept-language", self.locale.as_str())
+            .header("content-type", call.content_type)
+            .query(&call.query)
+            .body(call.body);
+        for (name, value) in &call.headers {
+            request = request.header(*name, value.as_str());
+        }
+        let response = request.send().await.map_err(|error| {
+            if error.is_timeout() {
+                Error::Timeout
+            } else {
+                Error::Network(error)
+            }
+        })?;
+        let status = response.status();
+        if status.is_success() {
+            let bytes = response.bytes().await.map_err(Error::Network)?;
+            return serde_json::from_slice(&bytes)
+                .map_err(|error| Error::Decode(error.to_string()));
+        }
+        let bytes = response.bytes().await.unwrap_or_default();
+        Err(api_error(status, &bytes))
     }
 
     /// One attempt, never retried, and no total timeout: the answer is a stream that may run for minutes. The caller

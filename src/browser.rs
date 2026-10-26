@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use crate::http::{Call, Http};
+use crate::http::{Call, Http, RawCall};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -104,6 +104,20 @@ impl<'a> BrowserApi<'a> {
     /// Proxy countries a session can route through. Empty until proxies are available.
     pub async fn countries(&self) -> Result<Vec<ProxyCountry>> {
         self.get("/countries").await
+    }
+
+    /// Keeps a Chrome profile folder packed as a `.tar.gz`, under `name`, so sessions can start from it. Only regular
+    /// files and folders are accepted, with relative paths, up to 200 MB. Profiles expire after 90 days unused.
+    pub async fn import_profile(&self, name: &str, archive: Vec<u8>) -> Result<BrowserProfile> {
+        self.http
+            .send_raw(RawCall {
+                path: "/profiles/import".to_owned(),
+                headers: self.headers.clone(),
+                query: vec![("name", name.to_owned())],
+                body: archive,
+                content_type: "application/gzip",
+            })
+            .await
     }
 
     /// Saved profiles, newest first. Save one from a running session with [`BrowserSessionsApi::save_profile`].

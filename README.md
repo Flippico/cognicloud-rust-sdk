@@ -103,6 +103,14 @@ let browser = BrowserClient::new(std::env::var("COGNICLOUD_BROWSER_KEY")?)?;
 let session = browser.browser().sessions().create(&CreateBrowserSession { timeout_minutes: Some(15), ..Default::default() }).await?;
 ```
 
+Upload a profile folder packed as a `.tar.gz` (see the app docs for how to pack it), then start a session from it:
+
+```rust
+let profile = browser.browser().import_profile("Shop account", std::fs::read("shop-profile.tar.gz")?).await?;
+let session = browser.browser().sessions().create(&CreateBrowserSession { profile_id: Some(profile.id.clone()), ..Default::default() }).await?;
+```
+
+
 A browser session is a Chrome that your agent drives over the Chrome DevTools Protocol. Start one, connect your automation library to its `cdp_url`, and stop it when you are done. The example uses `chromiumoxide` and `futures`:
 
 ```rust

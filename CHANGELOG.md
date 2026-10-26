@@ -2,6 +2,12 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-10-26
+
+### Added
+
+- `BrowserApi::import_profile(name, archive)` uploads a Chrome profile folder packed as a `.tar.gz`, so sessions can start from it (`profile_id`).
+
 ## [0.12.0] - 2026-10-26
 
 ### Added
