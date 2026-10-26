@@ -189,3 +189,29 @@ async fn lists_countries_and_profiles_as_empty_until_they_exist() {
     assert!(client.browser().countries().await.unwrap().is_empty());
     assert!(client.browser().profiles().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_browser_key_alone_sends_no_tenant_and_refuses_a_blank_key() {
+    use cognicloud_sdk::BrowserClient;
+
+    for key in ["", "   "] {
+        assert!(matches!(BrowserClient::new(key), Err(Error::Config(_))));
+    }
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/browser/profiles"))
+        .and(header("authorization", "Bearer cgb_abc"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let browser =
+        BrowserClient::with_base_url("cgb_abc", format!("{}/v1/browser", server.uri())).unwrap();
+    assert!(browser.browser().profiles().await.unwrap().is_empty());
+    let received = server.received_requests().await.unwrap();
+    assert!(
+        received[0].headers.get("tenant_id").is_none(),
+        "a browser key names its workspace"
+    );
+}

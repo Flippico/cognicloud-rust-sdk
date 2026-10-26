@@ -17,7 +17,9 @@ pub use browser::{
     BrowserApi, BrowserConcurrency, BrowserProfile, BrowserScreen, BrowserSession,
     BrowserSessionList, BrowserSessionsApi, BrowserStatus, CreateBrowserSession, ProxyCountry,
 };
-pub use client::{encode_tenant, Client, ClientBuilder, EndpointClient, Locale, Options};
+pub use client::{
+    encode_tenant, BrowserClient, Client, ClientBuilder, EndpointClient, Locale, Options,
+};
 pub use embeddings::{Embedding, EmbeddingInput, EmbeddingsRequest, EmbeddingsResult};
 pub use endpoints::{
     CreateEndpoint, CreatedEndpoint, DailyUsage, DailyUsageRange, Endpoint, EndpointStatus,

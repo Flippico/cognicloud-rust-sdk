@@ -296,6 +296,41 @@ pub struct Client {
     browser: Http,
 }
 
+/// The browser product alone. The key is a browser key from the dashboard (Browser → API keys). It names its
+/// workspace, so no tenant is sent and no Amadeus token is needed.
+pub struct BrowserClient {
+    key: String,
+    browser: Http,
+}
+
+impl BrowserClient {
+    pub fn new(key: impl Into<String>) -> Result<Self> {
+        let options = Options::default();
+        Self::with_base_url(key, options.browser_base_url)
+    }
+
+    /// For another environment, or a test server.
+    pub fn with_base_url(
+        key: impl Into<String>,
+        browser_base_url: impl Into<String>,
+    ) -> Result<Self> {
+        let key = key.into();
+        if key.trim().is_empty() {
+            return Err(Error::Config(
+                "a browser key is required: create one in the dashboard under Browser → API keys"
+                    .to_owned(),
+            ));
+        }
+        let mut browser = http(&Options::default())?;
+        browser.base_url = browser_base_url.into();
+        Ok(Self { key, browser })
+    }
+
+    pub fn browser(&self) -> BrowserApi<'_> {
+        BrowserApi::new(&self.browser, &self.key, None)
+    }
+}
+
 impl Client {
     pub fn builder() -> ClientBuilder {
         ClientBuilder::default()
@@ -306,7 +341,7 @@ impl Client {
     }
 
     pub fn browser(&self) -> BrowserApi<'_> {
-        BrowserApi::new(&self.browser, &self.token, &self.tenant)
+        BrowserApi::new(&self.browser, &self.token, Some(&self.tenant))
     }
 }
 
