@@ -267,6 +267,14 @@ async fn the_builder_requires_a_token() {
 }
 
 #[tokio::test]
+async fn a_blank_token_is_refused_like_a_missing_one() {
+    for token in ["", "   "] {
+        let error = Client::builder().token(token).build().unwrap_err();
+        assert!(matches!(error, Error::Config(_)));
+    }
+}
+
+#[tokio::test]
 async fn an_issued_invoke_url_is_used_as_it_is() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

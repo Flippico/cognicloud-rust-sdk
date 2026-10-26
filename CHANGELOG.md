@@ -2,6 +2,13 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- A blank token (empty or only spaces) is refused when the client is built, like a missing one. The error says to pass the person's token, or a browser key for browser calls.
+
+
 ## [0.10.0] - 2026-10-26
 
 ### Added
