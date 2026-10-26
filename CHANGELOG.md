@@ -2,6 +2,16 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-10-26
+
+### Added
+
+- `BrowserSessionsApi::save_profile(id, name)` saves a running session as a profile and ends the session. `CreateBrowserSession::profile_id` starts a session from a saved profile.
+
+### Changed
+
+- `BrowserProfile` has the fields the service returns: `size_bytes`, `expires_at`. `cookie_domains` is removed. This is a breaking change for code that read profiles, which could not have had any before profiles existed.
+
 ## [0.9.0] - 2026-10-25
 
 ### Added

@@ -48,13 +48,16 @@ pub struct BrowserSessionList {
     pub concurrency: BrowserConcurrency,
 }
 
-/// The options for a new session. Profiles, proxies, screens, captchas and recording are not available yet.
+/// The options for a new session. Proxies, screens, captchas and recording are not available yet.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBrowserSession {
     /// Minutes until the session stops. Default 15; at most 240.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_minutes: Option<u32>,
+    /// Start from a saved profile, with the logins it holds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -68,9 +71,11 @@ pub struct ProxyCountry {
 pub struct BrowserProfile {
     pub id: String,
     pub name: String,
-    pub cookie_domains: Vec<String>,
-    pub last_used_at: Option<String>,
+    pub size_bytes: u64,
     pub created_at: String,
+    pub last_used_at: Option<String>,
+    /// Deleted after this time unless a session starts from it.
+    pub expires_at: String,
 }
 
 /// Manages browser sessions with the signed-in person's session.
@@ -99,7 +104,7 @@ impl<'a> BrowserApi<'a> {
         self.get("/countries").await
     }
 
-    /// Profiles keep cookies between sessions. Empty until profiles are available.
+    /// Saved profiles, newest first. Save one from a running session with [`BrowserSessionsApi::save_profile`].
     pub async fn profiles(&self) -> Result<Vec<BrowserProfile>> {
         self.get("/profiles").await
     }
@@ -149,6 +154,23 @@ impl BrowserSessionsApi<'_> {
     pub async fn get(&self, id: &str) -> Result<BrowserSession> {
         self.api
             .get(&format!("/sessions/{}", crate::client::encode(id)))
+            .await
+    }
+
+    /// Closes the session's browser cleanly, keeps its profile under `name` and ends the session. Start a session with
+    /// the returned `id` as [`CreateBrowserSession::profile_id`] to continue from those logins. A profile holds
+    /// cookies and logins, so keep it private. Names are 1 to 80 characters and unique per person.
+    pub async fn save_profile(&self, id: &str, name: &str) -> Result<BrowserProfile> {
+        self.api
+            .http
+            .send(Call {
+                method: reqwest::Method::POST,
+                path: format!("/sessions/{}/profile", crate::client::encode(id)),
+                headers: self.api.headers.clone(),
+                query: Vec::new(),
+                body: Some(serde_json::json!({ "name": name })),
+                retry: false,
+            })
             .await
     }
 
