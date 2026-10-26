@@ -2,6 +2,13 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-10-26
+
+### Added
+
+- `BrowserClient::new(key)` uses the browser product with a browser key alone: no Amadeus token and no tenant. A browser key names its workspace. `BrowserClient::with_base_url` points it at another environment.
+- Without a tenant, browser calls send no `tenant_id` header.
+
 ## [0.10.1] - 2026-10-26
 
 ### Fixed

@@ -85,14 +85,13 @@ pub struct BrowserApi<'a> {
 }
 
 impl<'a> BrowserApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &str, tenant: &str) -> Self {
-        Self {
-            http,
-            headers: vec![
-                ("authorization", format!("Bearer {token}")),
-                ("tenant_id", tenant.to_owned()),
-            ],
+    /// `tenant` is sent as the `tenant_id` header when given. A browser key names its workspace, so it needs none.
+    pub(crate) fn new(http: &'a Http, token: &str, tenant: Option<&str>) -> Self {
+        let mut headers = vec![("authorization", format!("Bearer {token}"))];
+        if let Some(tenant) = tenant {
+            headers.push(("tenant_id", tenant.to_owned()));
         }
+        Self { http, headers }
     }
 
     pub fn sessions(&self) -> BrowserSessionsApi<'_> {
