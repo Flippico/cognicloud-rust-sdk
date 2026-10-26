@@ -248,3 +248,27 @@ async fn a_browser_key_alone_sends_no_tenant_and_refuses_a_blank_key() {
         "a browser key names its workspace"
     );
 }
+
+#[tokio::test]
+async fn uploads_a_profile_archive_as_the_raw_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/browser/profiles/import"))
+        .and(wiremock::matchers::query_param("name", "Shop account"))
+        .and(header("content-type", "application/gzip"))
+        .and(wiremock::matchers::body_bytes(vec![31u8, 139, 8]))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "id": "5f1c9a2e", "name": "Shop account", "sizeBytes": 3,
+            "createdAt": "2026-10-21T10:20:00Z", "lastUsedAt": null, "expiresAt": "2027-01-19T10:20:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = client(&server).await;
+    let profile = client
+        .browser()
+        .import_profile("Shop account", vec![31, 139, 8])
+        .await
+        .unwrap();
+    assert_eq!(profile.id, "5f1c9a2e");
+}
