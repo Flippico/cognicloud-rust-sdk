@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::browser::BrowserApi;
+use crate::mail::MailApi;
 use crate::embeddings::{EmbeddingsRequest, EmbeddingsResult};
 use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
@@ -43,6 +44,8 @@ pub struct Options {
     pub max_retries: u32,
     /// The browser service's base. Default `https://cognicloud.flippi.co/api/v1/browser`.
     pub browser_base_url: String,
+    /// The mail service's base. Default `https://cognicloud.flippi.co/api/v1/mail`.
+    pub mail_base_url: String,
 }
 
 impl Default for Options {
@@ -54,6 +57,7 @@ impl Default for Options {
             timeout: Duration::from_secs(30),
             max_retries: 2,
             browser_base_url: "https://cognicloud.flippi.co/api/v1/browser".to_owned(),
+            mail_base_url: "https://cognicloud.flippi.co/api/v1/mail".to_owned(),
         }
     }
 }
@@ -268,6 +272,11 @@ impl ClientBuilder {
         self
     }
 
+    pub fn mail_base_url(mut self, mail_base_url: impl Into<String>) -> Self {
+        self.options.mail_base_url = mail_base_url.into();
+        self
+    }
+
     pub fn build(self) -> Result<Client> {
         let token = self
             .token
@@ -279,11 +288,14 @@ impl ClientBuilder {
             })?;
         let mut browser = http(&self.options)?;
         browser.base_url = self.options.browser_base_url.clone();
+        let mut mail = http(&self.options)?;
+        mail.base_url = self.options.mail_base_url.clone();
         Ok(Client {
             token,
             tenant: self.options.tenant.clone(),
             http: http(&self.options)?,
             browser,
+            mail,
         })
     }
 }
@@ -294,6 +306,7 @@ pub struct Client {
     tenant: String,
     http: Http,
     browser: Http,
+    mail: Http,
 }
 
 /// The browser product alone. The key is a browser key from the dashboard (Browser → API keys). It names its
@@ -342,6 +355,10 @@ impl Client {
 
     pub fn browser(&self) -> BrowserApi<'_> {
         BrowserApi::new(&self.browser, &self.token, Some(&self.tenant))
+    }
+
+    pub fn mail(&self) -> MailApi<'_> {
+        MailApi::new(&self.mail, &self.token, &self.tenant)
     }
 }
 

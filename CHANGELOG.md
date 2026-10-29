@@ -2,6 +2,13 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-10-29
+
+### Added
+
+- `Client::mail()` manages mailboxes on the Flippico mail server: `create` returns the generated password once, with `list`, `get`, `delete`, `rotate_password` and `connection_settings`. `ClientBuilder::mail_base_url` points it at another environment.
+- Empty success bodies (such as `204 No Content`) decode as `()`.
+
 ## [0.13.0] - 2026-10-26
 
 ### Added
