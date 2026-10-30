@@ -132,8 +132,7 @@ impl Http {
         if status.is_success() {
             let bytes = response.bytes().await.map_err(Error::Network)?;
             let body: &[u8] = if bytes.is_empty() { b"null" } else { &bytes };
-            return serde_json::from_slice(body)
-                .map_err(|error| Error::Decode(error.to_string()));
+            return serde_json::from_slice(body).map_err(|error| Error::Decode(error.to_string()));
         }
         let bytes = response.bytes().await.unwrap_or_default();
         Err(api_error(status, &bytes))

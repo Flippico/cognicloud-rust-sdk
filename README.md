@@ -138,6 +138,22 @@ client.browser().sessions().stop(&session.id).await?;
 - `sessions().list()` returns the workspace's sessions, newest first, with `concurrency.active` and `concurrency.limit`. A start beyond the limit fails with status `429` and code `concurrency_limit`.
 - Proxy countries, profiles, screen sizes, captcha solving and recording are not available yet. `countries()` and `profiles()` return empty lists, and `CreateBrowserSession` has no field for those options.
 
+## Mail
+
+Mailboxes on the Flippico mail server. The token is a signed-in person's token or a mail key (`cgm_...`). The password is returned once; store it.
+
+```rust
+let created = client.mail().create("support").await?;
+let settings = client.mail().connection_settings().await?; // IMAP and SMTP hosts, and default_domain
+
+// Your own domain: add it, publish domain.records at your DNS provider, then verify.
+let domain = client.mail().domains().add("yourcompany.com").await?;
+client.mail().domains().verify(&domain.id).await?;
+client.mail().create_on("ceo", "yourcompany.com").await?;
+```
+
+`mail().list`, `get`, `rotate_password` and `delete` manage mailboxes; `mail().domains().list`, `get` and `delete` manage domains. Adding, verifying and deleting domains need a signed-in person's token.
+
 ## Responses with MCP tools
 
 ```rust

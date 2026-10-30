@@ -2,10 +2,14 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.16.0] - 2026-10-30
+
+### Added
+- Custom mail domains: `mail().domains()` lists, reads, adds, verifies and deletes your own domains, each with the DNS records to publish and their last check. `mail().create_on(local_part, domain)` creates a mailbox on one of your verified domains.
+- Mail connection settings include `default_domain`, the shared domain.
 
 ### Documentation
-- The README documents the mail base URL option and its default, `https://cognicloud.dev/api/v1/mail`.
+- The README has a Mail section, and documents the mail base URL option and its default, `https://cognicloud.dev/api/v1/mail`.
 
 ## [0.15.0] - 2026-10-30
 

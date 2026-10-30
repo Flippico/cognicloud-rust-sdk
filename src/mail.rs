@@ -45,6 +45,9 @@ pub struct MailServerEndpoint {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MailConnectionSettings {
+    /// The shared domain mailboxes are on unless a custom domain is chosen.
+    #[serde(default)]
+    pub default_domain: String,
     pub username_format: String,
     pub imap: MailServerEndpoint,
     pub smtp: MailServerEndpoint,
@@ -60,6 +63,47 @@ pub struct MailboxListOptions {
 #[serde(rename_all = "camelCase")]
 struct CreateMailbox<'a> {
     local_part: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    domain: Option<&'a str>,
+}
+
+/// One DNS record to publish for a domain. `ok` is the last check's result, `None` when not checked.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct MailDnsRecord {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub host: String,
+    /// Exactly what to enter at the DNS provider; long TXT values are already split into quoted strings.
+    pub value: String,
+    /// `ownership`, `mx`, `spf`, `dkim` or `dmarc`.
+    pub purpose: String,
+    pub ok: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailDomain {
+    pub id: String,
+    pub name: String,
+    /// `pending`, `verified` or `needs_attention`.
+    pub status: String,
+    pub records: Vec<MailDnsRecord>,
+    /// Mail servers the domain uses today besides CogniCloud.
+    #[serde(default)]
+    pub other_mx: Vec<String>,
+    pub created_at: String,
+    pub verified_at: Option<String>,
+    pub last_checked_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct MailDomainList {
+    pub items: Vec<MailDomain>,
+}
+
+#[derive(Serialize)]
+struct AddDomain<'a> {
+    name: &'a str,
 }
 
 /// Creates, lists and removes mailboxes on the Flippico mail server.
@@ -98,18 +142,41 @@ impl<'a> MailApi<'a> {
             .await
     }
 
-    /// Creates `<local_part>@<domain>`. Save the returned password now; it is not stored.
+    /// Creates `<local_part>@<domain>` on the shared domain. Save the returned password now; it is not stored.
     pub async fn create(&self, local_part: &str) -> Result<CreatedMailbox> {
+        self.create_mailbox(local_part, None).await
+    }
+
+    /// Creates `<local_part>@<domain>` on one of your verified domains. Save the returned password now.
+    pub async fn create_on(&self, local_part: &str, domain: &str) -> Result<CreatedMailbox> {
+        self.create_mailbox(local_part, Some(domain)).await
+    }
+
+    async fn create_mailbox(
+        &self,
+        local_part: &str,
+        domain: Option<&str>,
+    ) -> Result<CreatedMailbox> {
         self.http
             .send(Call {
                 method: reqwest::Method::POST,
                 path: "/mailboxes".to_owned(),
                 headers: self.headers.clone(),
                 query: Vec::new(),
-                body: Some(serde_json::to_value(CreateMailbox { local_part }).unwrap_or_default()),
+                body: Some(
+                    serde_json::to_value(CreateMailbox { local_part, domain }).unwrap_or_default(),
+                ),
                 retry: false,
             })
             .await
+    }
+
+    /// Your own domains for mailboxes.
+    pub fn domains(&self) -> MailDomainsApi<'_> {
+        MailDomainsApi {
+            http: self.http,
+            headers: self.headers.clone(),
+        }
     }
 
     pub async fn get(&self, id: &str) -> Result<Mailbox> {
@@ -168,10 +235,90 @@ impl<'a> MailApi<'a> {
     }
 }
 
+/// Your own domains for mailboxes. Adding, verifying and deleting need a signed-in person's token; an API key can
+/// list them and create mailboxes on verified ones.
+pub struct MailDomainsApi<'a> {
+    http: &'a Http,
+    headers: Vec<(&'static str, String)>,
+}
+
+impl MailDomainsApi<'_> {
+    async fn call<T: serde::de::DeserializeOwned>(
+        &self,
+        method: reqwest::Method,
+        path: String,
+        body: Option<serde_json::Value>,
+        retry: bool,
+    ) -> Result<T> {
+        self.http
+            .send(Call {
+                method,
+                path,
+                headers: self.headers.clone(),
+                query: Vec::new(),
+                body,
+                retry,
+            })
+            .await
+    }
+
+    /// Newest first, each with the DNS records to publish.
+    pub async fn list(&self) -> Result<MailDomainList> {
+        self.call(reqwest::Method::GET, "/domains".to_owned(), None, true)
+            .await
+    }
+
+    pub async fn get(&self, id: &str) -> Result<MailDomain> {
+        self.call(
+            reqwest::Method::GET,
+            format!("/domains/{}", encode(id)),
+            None,
+            true,
+        )
+        .await
+    }
+
+    /// Adds the domain as pending. Publish its records, then call `verify`.
+    pub async fn add(&self, name: &str) -> Result<MailDomain> {
+        let body = serde_json::to_value(AddDomain { name }).unwrap_or_default();
+        self.call(
+            reqwest::Method::POST,
+            "/domains".to_owned(),
+            Some(body),
+            false,
+        )
+        .await
+    }
+
+    /// Checks the domain's DNS now; the first time the ownership record is found, it becomes verified.
+    pub async fn verify(&self, id: &str) -> Result<MailDomain> {
+        self.call(
+            reqwest::Method::POST,
+            format!("/domains/{}/verify", encode(id)),
+            None,
+            false,
+        )
+        .await
+    }
+
+    /// Refused while the domain has mailboxes.
+    pub async fn delete(&self, id: &str) -> Result<()> {
+        self.call(
+            reqwest::Method::DELETE,
+            format!("/domains/{}", encode(id)),
+            None,
+            false,
+        )
+        .await
+    }
+}
+
 fn encode(id: &str) -> String {
     id.bytes()
         .flat_map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => vec![byte as char],
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                vec![byte as char]
+            }
             _ => format!("%{byte:02X}").chars().collect(),
         })
         .collect()

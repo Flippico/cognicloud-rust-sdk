@@ -31,10 +31,11 @@ pub use error::{Error, Result};
 pub use files::{
     image_part, input_file, input_image, input_text, pdf_part, text_part, ImageType, MAX_FILE_BYTES,
 };
-pub use responses::{McpTool, ResponseResult, ResponsesRequest, ToolChoice};
 pub use mail::{
-    CreatedMailbox, Mailbox, MailApi, MailboxList, MailboxListOptions, MailConnectionSettings,
-    MailServerEndpoint, RotatedMailboxPassword,
+    CreatedMailbox, MailApi, MailConnectionSettings, MailDnsRecord, MailDomain, MailDomainList,
+    MailDomainsApi, MailServerEndpoint, Mailbox, MailboxList, MailboxListOptions,
+    RotatedMailboxPassword,
 };
+pub use responses::{McpTool, ResponseResult, ResponsesRequest, ToolChoice};
 pub use secret::Secret;
 pub use stream::{ResponseStream, StreamEvent};

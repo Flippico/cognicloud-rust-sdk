@@ -5,11 +5,11 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::browser::BrowserApi;
-use crate::mail::MailApi;
 use crate::embeddings::{EmbeddingsRequest, EmbeddingsResult};
 use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
+use crate::mail::MailApi;
 use crate::responses::{ResponseResult, ResponsesRequest};
 use crate::stream::ResponseStream;
 
