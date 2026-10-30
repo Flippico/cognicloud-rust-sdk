@@ -4,6 +4,7 @@
 
 mod browser;
 mod client;
+mod database;
 mod embeddings;
 mod endpoints;
 mod error;
@@ -19,7 +20,13 @@ pub use browser::{
     BrowserSessionList, BrowserSessionsApi, BrowserStatus, CreateBrowserSession, ProxyCountry,
 };
 pub use client::{
-    encode_tenant, BrowserClient, Client, ClientBuilder, EndpointClient, Locale, Options,
+    encode_tenant, BrowserClient, Client, ClientBuilder, DatabaseClient, EndpointClient, Locale,
+    Options,
+};
+pub use database::{
+    DatabaseAction, DatabaseActionList, DatabaseActionListOptions, DatabaseApi, DatabaseKey,
+    DatabaseTable, HostedDatabase, QueryResult, ResultColumn, SelectQuery, Statement, TableApi,
+    TableColumn, WriteQuery,
 };
 pub use embeddings::{Embedding, EmbeddingInput, EmbeddingsRequest, EmbeddingsResult};
 pub use endpoints::{

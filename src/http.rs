@@ -38,6 +38,7 @@ pub(crate) struct RawCall<'a> {
 struct ErrorBody {
     error: Option<String>,
     message: Option<String>,
+    code: Option<String>,
 }
 
 fn is_retryable(status: u16) -> bool {
@@ -171,6 +172,12 @@ impl Http {
 
 fn api_error(status: reqwest::StatusCode, bytes: &[u8]) -> Error {
     let body: ErrorBody = serde_json::from_slice(bytes).unwrap_or_default();
+    if let (Some("query_failed"), Some(query_code)) = (body.error.as_deref(), &body.code) {
+        return Error::Query {
+            query_code: query_code.clone(),
+            message: body.message.unwrap_or_default(),
+        };
+    }
     Error::Api {
         status: status.as_u16(),
         code: body.error.unwrap_or_else(|| "http_error".to_owned()),

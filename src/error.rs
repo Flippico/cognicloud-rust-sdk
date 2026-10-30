@@ -11,6 +11,10 @@ pub enum Error {
         code: String,
         message: String,
     },
+    /// A statement failed in the database. `query_code` is a Postgres SQLSTATE such as `23505`, or `query_timeout` or
+    /// `unsupported_type`.
+    #[error("query failed ({query_code}): {message}")]
+    Query { query_code: String, message: String },
     /// The request did not finish within the configured timeout.
     #[error("the request timed out")]
     Timeout,
@@ -33,6 +37,7 @@ impl Error {
     pub fn status(&self) -> u16 {
         match self {
             Error::Api { status, .. } => *status,
+            Error::Query { .. } => 400,
             _ => 0,
         }
     }
@@ -41,12 +46,21 @@ impl Error {
     pub fn code(&self) -> &str {
         match self {
             Error::Api { code, .. } => code,
+            Error::Query { .. } => "query_failed",
             Error::Timeout => "timeout",
             Error::Network(_) => "network_error",
             Error::Config(_) => "config",
             Error::FileTooLarge => "file_too_large",
             Error::Env(_) => "env",
             Error::Decode(_) => "decode",
+        }
+    }
+
+    /// The Postgres code of a failed statement.
+    pub fn query_code(&self) -> Option<&str> {
+        match self {
+            Error::Query { query_code, .. } => Some(query_code),
+            _ => None,
         }
     }
 }

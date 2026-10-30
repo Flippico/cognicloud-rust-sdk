@@ -2,6 +2,13 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-10-30
+
+### Added
+- `DatabaseClient` queries a hosted database with a database key: `query`, `transaction`, `tables`, and `table(name)` with `select`, `insert`, `update` and `delete`.
+- `client.database()` manages databases, their keys (`keys`, `revoke_key`) and the action log (`actions`). `database_base_url` on the builder points it at another environment.
+- `Error::Query` is a failed statement, with its Postgres code in `query_code`. A `match` on `Error` with no wildcard needs a new arm.
+
 ## [0.16.0] - 2026-10-30
 
 ### Added

@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::browser::BrowserApi;
+use crate::database::{self, DatabaseApi, DatabaseTable, QueryResult, Statement, TableApi};
 use crate::embeddings::{EmbeddingsRequest, EmbeddingsResult};
 use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
@@ -46,6 +47,8 @@ pub struct Options {
     pub browser_base_url: String,
     /// The mail service's base. Default `https://cognicloud.dev/api/v1/mail`.
     pub mail_base_url: String,
+    /// The database service's base. Default `https://cognicloud.dev/api/v1/database`.
+    pub database_base_url: String,
 }
 
 impl Default for Options {
@@ -58,6 +61,7 @@ impl Default for Options {
             max_retries: 2,
             browser_base_url: "https://cognicloud.dev/api/v1/browser".to_owned(),
             mail_base_url: "https://cognicloud.dev/api/v1/mail".to_owned(),
+            database_base_url: "https://cognicloud.dev/api/v1/database".to_owned(),
         }
     }
 }
@@ -277,6 +281,11 @@ impl ClientBuilder {
         self
     }
 
+    pub fn database_base_url(mut self, database_base_url: impl Into<String>) -> Self {
+        self.options.database_base_url = database_base_url.into();
+        self
+    }
+
     pub fn build(self) -> Result<Client> {
         let token = self
             .token
@@ -290,12 +299,15 @@ impl ClientBuilder {
         browser.base_url = self.options.browser_base_url.clone();
         let mut mail = http(&self.options)?;
         mail.base_url = self.options.mail_base_url.clone();
+        let mut database = http(&self.options)?;
+        database.base_url = self.options.database_base_url.clone();
         Ok(Client {
             token,
             tenant: self.options.tenant.clone(),
             http: http(&self.options)?,
             browser,
             mail,
+            database,
         })
     }
 }
@@ -307,6 +319,7 @@ pub struct Client {
     http: Http,
     browser: Http,
     mail: Http,
+    database: Http,
 }
 
 /// The browser product alone. The key is a browser key from the dashboard (Browser → API keys). It names its
@@ -344,6 +357,64 @@ impl BrowserClient {
     }
 }
 
+/// Queries one database. The key is a database key from the dashboard (Database → API keys). It names its database
+/// and workspace, so no tenant is sent and no Amadeus token is needed.
+pub struct DatabaseClient {
+    key: String,
+    database: Http,
+}
+
+impl DatabaseClient {
+    pub fn new(key: impl Into<String>) -> Result<Self> {
+        Self::with_base_url(key, Options::default().database_base_url)
+    }
+
+    /// For another environment, or a test server.
+    pub fn with_base_url(
+        key: impl Into<String>,
+        database_base_url: impl Into<String>,
+    ) -> Result<Self> {
+        let key = key.into();
+        if key.trim().is_empty() {
+            return Err(Error::Config(
+                "a database key is required: create one in the dashboard under Database → API keys"
+                    .to_owned(),
+            ));
+        }
+        let mut database = http(&Options::default())?;
+        database.base_url = database_base_url.into();
+        Ok(Self { key, database })
+    }
+
+    /// Runs one SQL statement, with `$1`, `$2` for `params`. It stops after 15 seconds and returns at most 1,000 rows
+    /// and 5 MB. Never retried, because it may change data.
+    pub async fn query(&self, sql: &str, params: &[serde_json::Value]) -> Result<QueryResult> {
+        database::query(&self.database, &self.key, sql, params).await
+    }
+
+    /// Runs 1 to 20 statements that commit together, or none do. Needs a write key. Never retried.
+    pub async fn transaction(&self, statements: &[Statement]) -> Result<Vec<QueryResult>> {
+        database::transaction(&self.database, &self.key, statements).await
+    }
+
+    /// Tables and views in the `public` schema that this key can read.
+    pub async fn tables(&self) -> Result<Vec<DatabaseTable>> {
+        database::tables(&self.database, &self.key).await
+    }
+
+    pub fn table(&self, name: &str) -> TableApi<'_> {
+        database::table(&self.database, &self.key, name)
+    }
+}
+
+impl fmt::Debug for DatabaseClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatabaseClient")
+            .field("key", &"Secret(****)")
+            .finish()
+    }
+}
+
 impl Client {
     pub fn builder() -> ClientBuilder {
         ClientBuilder::default()
@@ -359,6 +430,10 @@ impl Client {
 
     pub fn mail(&self) -> MailApi<'_> {
         MailApi::new(&self.mail, &self.token, &self.tenant)
+    }
+
+    pub fn database(&self) -> DatabaseApi<'_> {
+        DatabaseApi::new(&self.database, &self.token, &self.tenant)
     }
 }
 

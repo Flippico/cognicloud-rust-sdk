@@ -154,6 +154,45 @@ client.mail().create_on("ceo", "yourcompany.com").await?;
 
 `mail().list`, `get`, `rotate_password` and `delete` manage mailboxes; `mail().domains().list`, `get` and `delete` manage domains. Adding, verifying and deleting domains need a signed-in person's token.
 
+## Database
+
+Hosted Postgres. A signed-in person creates databases; a database key (`cgd_...`) from the dashboard queries one of them and needs nothing else. A `read` key can only read. A `write` key runs as the database owner.
+
+```rust
+use cognicloud_sdk::{Client, DatabaseClient, Statement};
+use serde_json::json;
+
+let cc = Client::builder().token(session_token).build()?;
+let database = cc.database().create("Orders").await?;
+
+let db = DatabaseClient::new(std::env::var("COGNICLOUD_DATABASE_KEY")?)?;
+
+db.query("CREATE TABLE orders (id serial PRIMARY KEY, email text, total numeric)", &[]).await?;
+let rows = db.query("SELECT * FROM orders WHERE total > $1", &[json!(100)]).await?.rows;
+
+let orders = db.table("orders");
+orders.insert(&[json!({ "email": "a@example.com", "total": "19.90" })]).await?;
+let paid = orders.select(&["id", "email"]).gt("total", 10).order("id", true).limit(20).execute().await?;
+orders.update(&json!({ "total": "0" }))?.eq("id", 1).execute().await?;
+orders.delete().eq("id", 1).execute().await?;
+
+db.transaction(&[
+    Statement::new("UPDATE accounts SET balance = balance - $1 WHERE id = $2", vec![json!(10), json!(1)]),
+    Statement::new("UPDATE accounts SET balance = balance + $1 WHERE id = $2", vec![json!(10), json!(2)]),
+])
+.await?;
+let tables = db.tables().await?;
+```
+
+- Filters are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`, `ilike`, `is` and `is_in`. `update` and `delete` need at least one; to change every row, use `query`.
+- `select`, `update` and `delete` run on `execute()`. `insert` runs at once.
+- A result has `rows`, `columns`, `row_count` and `truncated`, and `rows_as::<T>()` decodes rows into your own type. One request stops after 15 seconds and returns at most 1,000 rows and 5 MB.
+- `numeric` values, and `bigint` values beyond 2^53, come back as strings, so nothing is rounded. `bytea` comes back as base64.
+- A failed statement returns `Error::Query { query_code, message }`: `query_code` is a Postgres SQLSTATE such as `23505`, or `query_timeout`.
+- `query` and `transaction`, inserts, updates and deletes are never retried, because they may change data.
+
+`cc.database()` also has `list`, `get`, `delete`, `keys`, `revoke_key` and `actions`. Keys are created in the dashboard.
+
 ## Responses with MCP tools
 
 ```rust
@@ -247,6 +286,7 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 | `max_retries` | `2` | For `429` and `5xx`, on calls that are safe to repeat. |
 | `browser_base_url` | `https://cognicloud.dev/api/v1/browser` | Browser sessions service. |
 | `mail_base_url` | `https://cognicloud.dev/api/v1/mail` | Mail service. |
+| `database_base_url` | `https://cognicloud.dev/api/v1/database` | Mail service. |
 
 Set them on the builder, or with `Options` for `EndpointClient::with_options`.
 
