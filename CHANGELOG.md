@@ -2,6 +2,11 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] - 2026-10-30
+
+### Changed
+- The default service URLs are on `https://cognicloud.dev`: `https://cognicloud.dev/api/v1/ai-gateway`, `https://cognicloud.dev/api/v1/browser` and `https://cognicloud.dev/api/v1/mail`, instead of `cognicloud.flippi.co`. Set the base URL options to keep using the old host.
+
 ## [0.14.0] - 2026-10-29
 
 ### Added

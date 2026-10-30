@@ -7,8 +7,8 @@ fn session() -> serde_json::Value {
     json!({
         "id": "b903c5d0",
         "status": "active",
-        "cdpUrl": "wss://cognicloud.flippi.co/api/v1/browser/sessions/b903c5d0/cdp?token=t",
-        "liveUrl": "https://cognicloud.flippi.co/api/v1/browser/sessions/b903c5d0/live?token=t",
+        "cdpUrl": "wss://cognicloud.dev/api/v1/browser/sessions/b903c5d0/cdp?token=t",
+        "liveUrl": "https://cognicloud.dev/api/v1/browser/sessions/b903c5d0/live?token=t",
         "profileId": null,
         "proxyCountryCode": null,
         "solveCaptchas": false,

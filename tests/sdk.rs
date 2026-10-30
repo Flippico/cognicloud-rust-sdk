@@ -341,6 +341,6 @@ fn the_default_tenant_is_named_in_hex_in_the_invoke_url() {
     let client = EndpointClient::new("e1", "k");
     assert_eq!(
         client.url(),
-        "https://cognicloud.flippi.co/api/v1/ai-gateway/invoke/636f676e69636c6f7564/e1"
+        "https://cognicloud.dev/api/v1/ai-gateway/invoke/636f676e69636c6f7564/e1"
     );
 }

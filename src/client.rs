@@ -33,7 +33,7 @@ impl Locale {
 /// Settings shared by every client. The defaults match the JavaScript SDK.
 #[derive(Debug, Clone)]
 pub struct Options {
-    /// Default `https://cognicloud.flippi.co/api/v1/ai-gateway`.
+    /// Default `https://cognicloud.dev/api/v1/ai-gateway`.
     pub base_url: String,
     /// The tenant (workspace) to manage, and the tenant that owns an endpoint called by ID. Default `"cognicloud"`.
     pub tenant: String,
@@ -42,22 +42,22 @@ pub struct Options {
     pub timeout: Duration,
     /// For `429` and `5xx`, on calls that are safe to repeat. Default 2.
     pub max_retries: u32,
-    /// The browser service's base. Default `https://cognicloud.flippi.co/api/v1/browser`.
+    /// The browser service's base. Default `https://cognicloud.dev/api/v1/browser`.
     pub browser_base_url: String,
-    /// The mail service's base. Default `https://cognicloud.flippi.co/api/v1/mail`.
+    /// The mail service's base. Default `https://cognicloud.dev/api/v1/mail`.
     pub mail_base_url: String,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Self {
-            base_url: "https://cognicloud.flippi.co/api/v1/ai-gateway".to_owned(),
+            base_url: "https://cognicloud.dev/api/v1/ai-gateway".to_owned(),
             tenant: "cognicloud".to_owned(),
             locale: Locale::En,
             timeout: Duration::from_secs(30),
             max_retries: 2,
-            browser_base_url: "https://cognicloud.flippi.co/api/v1/browser".to_owned(),
-            mail_base_url: "https://cognicloud.flippi.co/api/v1/mail".to_owned(),
+            browser_base_url: "https://cognicloud.dev/api/v1/browser".to_owned(),
+            mail_base_url: "https://cognicloud.dev/api/v1/mail".to_owned(),
         }
     }
 }

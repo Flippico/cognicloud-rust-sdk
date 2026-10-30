@@ -224,12 +224,12 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 
 | Option | Default | |
 | --- | --- | --- |
-| `base_url` | `https://cognicloud.flippi.co/api/v1/ai-gateway` | Point at another environment. |
+| `base_url` | `https://cognicloud.dev/api/v1/ai-gateway` | Point at another environment. |
 | `tenant` | `"cognicloud"` | The workspace to manage, and the tenant that owns an endpoint called by ID. |
 | `locale` | `Locale::En` | `Accept-Language` for localised responses. |
 | `timeout` | 30 seconds | Per request. |
 | `max_retries` | `2` | For `429` and `5xx`, on calls that are safe to repeat. |
-| `browser_base_url` | `https://cognicloud.flippi.co/api/v1/browser` | Browser sessions service. |
+| `browser_base_url` | `https://cognicloud.dev/api/v1/browser` | Browser sessions service. |
 
 Set them on the builder, or with `Options` for `EndpointClient::with_options`.
 
