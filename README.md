@@ -230,6 +230,7 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 | `timeout` | 30 seconds | Per request. |
 | `max_retries` | `2` | For `429` and `5xx`, on calls that are safe to repeat. |
 | `browser_base_url` | `https://cognicloud.dev/api/v1/browser` | Browser sessions service. |
+| `mail_base_url` | `https://cognicloud.dev/api/v1/mail` | Mail service. |
 
 Set them on the builder, or with `Options` for `EndpointClient::with_options`.
 
