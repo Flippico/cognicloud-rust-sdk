@@ -352,3 +352,58 @@ async fn lists_and_revokes_keys_and_pages_through_actions() {
     assert_eq!(page.next_cursor.as_deref(), Some("next"));
     assert_eq!(page.items[0].duration_ms, Some(12));
 }
+
+#[tokio::test]
+async fn runs_sql_and_lists_tables_as_the_owner() {
+    let server = MockServer::start().await;
+    let value = "a078e7865b1073c4d2c1eaa92a9b5507";
+    Mock::given(method("POST"))
+        .and(path("/v1/database/databases/db1/query"))
+        .and(header("authorization", "Bearer session"))
+        .and(header("tenant_id", "acme"))
+        .and(body_json(
+            json!({ "sql": "SELECT id FROM orders WHERE id = $1", "params": [value] }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(result()))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/database/databases/db1/tables"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "tables": [{ "name": "orders", "columns": [] }] })),
+        )
+        .mount(&server)
+        .await;
+
+    let client = person(&server).await;
+    let databases = client.database();
+    let found = databases
+        .query(
+            "db1",
+            "SELECT id FROM orders WHERE id = $1",
+            &[json!(value)],
+        )
+        .await
+        .unwrap();
+    assert_eq!(found.row_count, 1);
+    assert_eq!(databases.tables("db1").await.unwrap()[0].name, "orders");
+}
+
+#[tokio::test]
+async fn does_not_repeat_an_owner_query() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/database/databases/db1/query"))
+        .respond_with(ResponseTemplate::new(503))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = person(&server).await;
+    let error = client
+        .database()
+        .query("db1", "DELETE FROM orders", &[])
+        .await
+        .unwrap_err();
+    assert_eq!(error.status(), 503);
+}

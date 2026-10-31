@@ -473,6 +473,28 @@ impl<'a> DatabaseApi<'a> {
         self.http.send::<Value>(call).await.map(|_| ())
     }
 
+    /// Runs one SQL statement in your own database as its owner, with `$1`, `$2` for `params`. It has the same limits
+    /// as a key. Never retried, because it may change data.
+    pub async fn query(&self, id: &str, sql: &str, params: &[Value]) -> Result<QueryResult> {
+        let mut call = self.call(
+            reqwest::Method::POST,
+            format!("/databases/{}/query", encode(id)),
+        );
+        call.body = Some(json!({ "sql": sql, "params": params }));
+        call.retry = false;
+        self.http.send(call).await
+    }
+
+    /// Tables and views in the database's `public` schema.
+    pub async fn tables(&self, id: &str) -> Result<Vec<DatabaseTable>> {
+        let path = format!("/databases/{}/tables", encode(id));
+        let list: TableList = self
+            .http
+            .send(self.call(reqwest::Method::GET, path))
+            .await?;
+        Ok(list.tables)
+    }
+
     /// Creating and deleting databases and keys, newest first. Queries are not listed.
     pub async fn actions(&self, options: DatabaseActionListOptions) -> Result<DatabaseActionList> {
         let mut call = self.call(reqwest::Method::GET, "/actions".to_owned());

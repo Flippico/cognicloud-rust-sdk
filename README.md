@@ -191,6 +191,14 @@ let tables = db.tables().await?;
 - A failed statement returns `Error::Query { query_code, message }`: `query_code` is a Postgres SQLSTATE such as `23505`, or `query_timeout`.
 - `query` and `transaction`, inserts, updates and deletes are never retried, because they may change data.
 
+Pass values as `params`, never inside the SQL. They need no quotes and cannot break the statement:
+
+```rust
+db.query("INSERT INTO members (id, user_id) VALUES ($1, $2)", &[json!(id), json!(user_id)]).await?;
+```
+
+A signed-in person can run SQL in their own database without a key: `cc.database().query(&database.id, sql, params)` and `cc.database().tables(&database.id)`.
+
 `cc.database()` also has `list`, `get`, `delete`, `keys`, `revoke_key` and `actions`. Keys are created in the dashboard.
 
 ## Responses with MCP tools

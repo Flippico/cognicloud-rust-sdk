@@ -2,6 +2,14 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.18.0] - 2026-10-30
+
+### Added
+- `client.database().query(id, sql, params)` and `client.database().tables(id)` let a signed-in person run SQL and list tables in their own database, as its owner, without a key.
+
+### Documentation
+- The README explains passing values as parameters.
+
 ## [0.17.0] - 2026-10-30
 
 ### Added
