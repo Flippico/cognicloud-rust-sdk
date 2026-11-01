@@ -201,6 +201,25 @@ A signed-in person can run SQL in their own database without a key: `cc.database
 
 `cc.database()` also has `list`, `get`, `delete`, `keys`, `revoke_key` and `actions`. Keys are created in the dashboard.
 
+## Web builder
+
+Build a React application and host it at `https://<subdomain>.cognicloud.dev`. Leave out `repo_url` to start from a Vite + React starter. Each person can have 3 applications.
+
+```rust
+use cognicloud_sdk::CreateApplication;
+
+let app = cc.web_builder().create(&CreateApplication {
+    subdomain: "shop".to_owned(),
+    repo_url: Some("https://github.com/acme/shop".to_owned()),
+    ..Default::default()
+}).await?;
+
+let status = cc.web_builder().get(&app.id).await?.status;
+let logs = cc.web_builder().logs(&app.id).await?;
+```
+
+`create` starts the build and returns at once, with `status` set to `building`. It then becomes `running` or `failed`. `branch`, `build_command` and `output_dir` default to `main`, `npm run build` and `dist`. `list`, `redeploy` and `delete` do the rest.
+
 ## Responses with MCP tools
 
 ```rust
@@ -294,7 +313,8 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 | `max_retries` | `2` | For `429` and `5xx`, on calls that are safe to repeat. |
 | `browser_base_url` | `https://cognicloud.dev/api/v1/browser` | Browser sessions service. |
 | `mail_base_url` | `https://cognicloud.dev/api/v1/mail` | Mail service. |
-| `database_base_url` | `https://cognicloud.dev/api/v1/database` | Mail service. |
+| `database_base_url` | `https://cognicloud.dev/api/v1/database` | Database service. |
+| `web_builder_base_url` | `https://cognicloud.dev/api/v1/web-builder` | Web builder service. |
 
 Set them on the builder, or with `Options` for `EndpointClient::with_options`.
 

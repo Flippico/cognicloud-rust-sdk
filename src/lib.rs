@@ -14,6 +14,7 @@ mod mail;
 mod responses;
 mod secret;
 mod stream;
+mod web_builder;
 
 pub use browser::{
     BrowserApi, BrowserConcurrency, BrowserProfile, BrowserScreen, BrowserSession,
@@ -46,3 +47,4 @@ pub use mail::{
 pub use responses::{McpTool, ResponseResult, ResponsesRequest, ToolChoice};
 pub use secret::Secret;
 pub use stream::{ResponseStream, StreamEvent};
+pub use web_builder::{Application, CreateApplication, WebBuilderApi};

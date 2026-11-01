@@ -2,6 +2,11 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.19.0] - 2026-11-01
+
+### Added
+- `client.web_builder()` builds and hosts React applications on `<subdomain>.cognicloud.dev`: `create`, `list`, `get`, `redeploy`, `logs` and `delete`. The `web_builder_base_url` builder option points it at another environment.
+
 ## [0.18.0] - 2026-10-30
 
 ### Added

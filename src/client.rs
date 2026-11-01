@@ -13,6 +13,7 @@ use crate::http::{Call, Http};
 use crate::mail::MailApi;
 use crate::responses::{ResponseResult, ResponsesRequest};
 use crate::stream::ResponseStream;
+use crate::web_builder::WebBuilderApi;
 
 /// Language for localised responses, sent as `Accept-Language`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -49,6 +50,8 @@ pub struct Options {
     pub mail_base_url: String,
     /// The database service's base. Default `https://cognicloud.dev/api/v1/database`.
     pub database_base_url: String,
+    /// The web builder's base. Default `https://cognicloud.dev/api/v1/web-builder`.
+    pub web_builder_base_url: String,
 }
 
 impl Default for Options {
@@ -62,6 +65,7 @@ impl Default for Options {
             browser_base_url: "https://cognicloud.dev/api/v1/browser".to_owned(),
             mail_base_url: "https://cognicloud.dev/api/v1/mail".to_owned(),
             database_base_url: "https://cognicloud.dev/api/v1/database".to_owned(),
+            web_builder_base_url: "https://cognicloud.dev/api/v1/web-builder".to_owned(),
         }
     }
 }
@@ -286,6 +290,11 @@ impl ClientBuilder {
         self
     }
 
+    pub fn web_builder_base_url(mut self, web_builder_base_url: impl Into<String>) -> Self {
+        self.options.web_builder_base_url = web_builder_base_url.into();
+        self
+    }
+
     pub fn build(self) -> Result<Client> {
         let token = self
             .token
@@ -301,6 +310,8 @@ impl ClientBuilder {
         mail.base_url = self.options.mail_base_url.clone();
         let mut database = http(&self.options)?;
         database.base_url = self.options.database_base_url.clone();
+        let mut web_builder = http(&self.options)?;
+        web_builder.base_url = self.options.web_builder_base_url.clone();
         Ok(Client {
             token,
             tenant: self.options.tenant.clone(),
@@ -308,6 +319,7 @@ impl ClientBuilder {
             browser,
             mail,
             database,
+            web_builder,
         })
     }
 }
@@ -320,6 +332,7 @@ pub struct Client {
     browser: Http,
     mail: Http,
     database: Http,
+    web_builder: Http,
 }
 
 /// The browser product alone. The key is a browser key from the dashboard (Browser → API keys). It names its
@@ -434,6 +447,10 @@ impl Client {
 
     pub fn database(&self) -> DatabaseApi<'_> {
         DatabaseApi::new(&self.database, &self.token, &self.tenant)
+    }
+
+    pub fn web_builder(&self) -> WebBuilderApi<'_> {
+        WebBuilderApi::new(&self.web_builder, &self.token, &self.tenant)
     }
 }
 
