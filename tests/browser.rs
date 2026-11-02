@@ -374,6 +374,7 @@ async fn calls_each_step_run_route() {
         "steps": [{ "number": 1, "url": "https://a.test/", "thought": "t", "actions": ["upload file"], "error": null }],
         "humanReason": null,
         "uploadIndex": 4,
+        "fileName": "cv.pdf",
         "result": null,
         "marker": null,
         "errorCode": null,
@@ -427,6 +428,7 @@ async fn calls_each_step_run_route() {
         .await
         .unwrap();
     assert_eq!(created.upload_index, Some(4));
+    assert_eq!(created.file_name.as_deref(), Some("cv.pdf"));
     assert_eq!(
         sessions.get_step_run("s1", "r1").await.unwrap().steps[0].actions,
         ["upload file"]
@@ -451,4 +453,21 @@ async fn calls_each_step_run_route() {
         .await
         .unwrap();
     sessions.stop_step_run("s1", "r1").await.unwrap();
+}
+
+#[tokio::test]
+async fn deletes_a_profile() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/v1/browser/profiles/p1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    client(&server)
+        .await
+        .browser()
+        .delete_profile("p1")
+        .await
+        .unwrap();
 }

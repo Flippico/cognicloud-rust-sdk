@@ -2,6 +2,12 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.23.0] - 2026-11-02
+
+### Added
+- `browser().sessions().set_step_run_file` gives a stored run the file its agent uploads, and `StepRun::file_name` names it. `browser().delete_profile` deletes a saved profile. Needs browser service 0.8.0.
+- Session lists give `concurrency.available`, the slots free on the service. `concurrency.active` now counts only your own sessions.
+
 ## [0.22.0] - 2026-11-02
 
 ### Added

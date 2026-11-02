@@ -40,6 +40,8 @@ pub struct BrowserSession {
 pub struct BrowserConcurrency {
     pub active: u64,
     pub limit: u64,
+    #[serde(default)]
+    pub available: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -120,6 +122,19 @@ impl<'a> BrowserApi<'a> {
             .await
     }
 
+    pub async fn delete_profile(&self, id: &str) -> Result<()> {
+        self.http
+            .send(Call {
+                method: reqwest::Method::DELETE,
+                path: format!("/profiles/{}", crate::client::encode(id)),
+                headers: self.headers.clone(),
+                query: Vec::new(),
+                body: None,
+                retry: false,
+            })
+            .await
+    }
+
     /// Saved profiles, newest first. Save one from a running session with [`BrowserSessionsApi::save_profile`].
     pub async fn profiles(&self) -> Result<Vec<BrowserProfile>> {
         self.get("/profiles").await
@@ -162,7 +177,7 @@ impl BrowserSessionsApi<'_> {
             .await
     }
 
-    /// Newest first, with the workspace's concurrency.
+    /// Your sessions, newest first, with how many are running and how many slots the service has free.
     pub async fn list(&self) -> Result<BrowserSessionList> {
         self.api.get("/sessions").await
     }
@@ -349,6 +364,31 @@ impl BrowserSessionsApi<'_> {
         self.step_run_post(id, run_id, "upload", Some(body)).await
     }
 
+    /// Stores the file, encrypted, up to 10 MB. When the agent reaches a file field it uploads this file by itself,
+    /// without pausing at `waiting_for_upload`. Sending another replaces it.
+    pub async fn set_step_run_file(
+        &self,
+        id: &str,
+        run_id: &str,
+        name: &str,
+        file: Vec<u8>,
+    ) -> Result<StepRun> {
+        self.api
+            .http
+            .send_raw(RawCall {
+                path: format!(
+                    "/sessions/{}/step-runs/{}/file",
+                    crate::client::encode(id),
+                    crate::client::encode(run_id)
+                ),
+                headers: self.api.headers.clone(),
+                query: vec![("name", name.to_owned())],
+                body: file,
+                content_type: "application/octet-stream",
+            })
+            .await
+    }
+
     /// The next step reads it. A run waiting for the person becomes ready.
     pub async fn send_step_run_message(
         &self,
@@ -453,6 +493,8 @@ pub struct StepRun {
     pub human_reason: Option<String>,
     /// The numbered file field, while `waiting_for_upload`. `None` means the page's first file field.
     pub upload_index: Option<u32>,
+    /// The stored file the agent uploads by itself. `None` means a step pauses at `waiting_for_upload`.
+    pub file_name: Option<String>,
     /// The model's reply, or why the run failed.
     pub result: Option<String>,
     /// The word on the reply's RESULT line.
