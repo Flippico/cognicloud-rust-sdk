@@ -220,6 +220,29 @@ let logs = cc.web_builder().logs(&app.id).await?;
 
 `create` starts the build and returns at once, with `status` set to `building`. It then becomes `running` or `failed`. `branch`, `build_command` and `output_dir` default to `main`, `npm run build` and `dist`. `list`, `redeploy` and `delete` do the rest.
 
+```rust
+use cognicloud_sdk::{UpdateApplication, WebBuilderActionListOptions};
+
+let api = cc.web_builder();
+api.update(&app.id, &UpdateApplication {
+    branch: Some("next".to_owned()),
+    ..Default::default()
+}).await?;
+api.pause(&app.id).await?;
+api.resume(&app.id).await?;
+let requests = api.runtime_logs(&app.id).await?;
+let history = api.actions(WebBuilderActionListOptions {
+    application_id: Some(app.id.clone()),
+    ..Default::default()
+}).await?;
+
+api.create_repository(&app.id, "shop").await?;
+api.enable_auto_deploy(&app.id).await?;
+api.disable_auto_deploy(&app.id).await?;
+```
+
+`update` starts a build, and a paused site has `status` set to `paused`. `create_repository` and the auto-deploy methods need a connected GitHub account: `authorize_github`, `connect_github`, `github_repositories` and `disconnect_github`.
+
 ## Responses with MCP tools
 
 ```rust

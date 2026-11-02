@@ -47,4 +47,7 @@ pub use mail::{
 pub use responses::{McpTool, ResponseResult, ResponsesRequest, ToolChoice};
 pub use secret::Secret;
 pub use stream::{ResponseStream, StreamEvent};
-pub use web_builder::{Application, CreateApplication, WebBuilderApi};
+pub use web_builder::{
+    Application, CreateApplication, GithubRepositories, GithubRepository, UpdateApplication,
+    WebBuilderAction, WebBuilderActionList, WebBuilderActionListOptions, WebBuilderApi,
+};

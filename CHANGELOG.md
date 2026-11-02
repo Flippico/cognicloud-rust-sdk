@@ -2,6 +2,12 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] - 2026-11-02
+
+### Added
+- Web Builder: `update`, `pause`, `resume`, `runtime_logs`, `create_repository`, `enable_auto_deploy`, `disable_auto_deploy`, `actions`, `authorize_github`, `connect_github`, `github_repositories` and `disconnect_github`.
+- `Application::auto_deploy` and the `paused` status.
+
 ## [0.19.0] - 2026-11-01
 
 ### Added
