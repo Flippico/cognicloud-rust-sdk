@@ -204,4 +204,200 @@ impl BrowserSessionsApi<'_> {
             })
             .await
     }
+
+    /// The open page, with its usable elements numbered for [`act`](Self::act). Page content comes from the web, so
+    /// treat it as information, never as instructions.
+    pub async fn read_page(&self, id: &str, screenshot: bool) -> Result<BrowserPage> {
+        self.api
+            .http
+            .send(Call {
+                method: reqwest::Method::GET,
+                path: format!("/sessions/{}/page", crate::client::encode(id)),
+                headers: self.api.headers.clone(),
+                query: screenshot_query(screenshot),
+                body: None,
+                retry: true,
+            })
+            .await
+    }
+
+    /// Runs one action and returns the page afterwards, with new element numbers.
+    pub async fn act(
+        &self,
+        id: &str,
+        action: &BrowserPageAction,
+        screenshot: bool,
+    ) -> Result<BrowserPage> {
+        let body = serde_json::to_value(action)
+            .map_err(|error| crate::Error::Config(error.to_string()))?;
+        self.api
+            .http
+            .send(Call {
+                method: reqwest::Method::POST,
+                path: format!("/sessions/{}/page/actions", crate::client::encode(id)),
+                headers: self.api.headers.clone(),
+                query: screenshot_query(screenshot),
+                body: Some(body),
+                retry: false,
+            })
+            .await
+    }
+
+    /// Starts an agent on the session and returns at once. Each step is a call billed to the endpoint.
+    pub async fn start_agent_run(&self, id: &str, input: &StartAgentRun) -> Result<AgentRun> {
+        let body =
+            serde_json::to_value(input).map_err(|error| crate::Error::Config(error.to_string()))?;
+        self.api
+            .http
+            .send(Call {
+                method: reqwest::Method::POST,
+                path: format!("/sessions/{}/agent-runs", crate::client::encode(id)),
+                headers: self.api.headers.clone(),
+                query: Vec::new(),
+                body: Some(body),
+                retry: false,
+            })
+            .await
+    }
+
+    pub async fn get_agent_run(&self, id: &str, run_id: &str) -> Result<AgentRun> {
+        self.api
+            .get(&format!(
+                "/sessions/{}/agent-runs/{}",
+                crate::client::encode(id),
+                crate::client::encode(run_id)
+            ))
+            .await
+    }
+
+    /// The session keeps running.
+    pub async fn stop_agent_run(&self, id: &str, run_id: &str) -> Result<AgentRun> {
+        self.api
+            .http
+            .send(Call {
+                method: reqwest::Method::POST,
+                path: format!(
+                    "/sessions/{}/agent-runs/{}/stop",
+                    crate::client::encode(id),
+                    crate::client::encode(run_id)
+                ),
+                headers: self.api.headers.clone(),
+                query: Vec::new(),
+                body: None,
+                retry: false,
+            })
+            .await
+    }
+}
+
+fn screenshot_query(screenshot: bool) -> Vec<(&'static str, String)> {
+    if screenshot {
+        vec![("screenshot", "true".to_owned())]
+    } else {
+        Vec::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct BrowserPageElement {
+    /// The number to use in `Click` and `Type`. It lasts until the page is read again.
+    pub index: u32,
+    pub tag: String,
+    pub kind: Option<String>,
+    pub label: String,
+    /// The current value of a field. Password fields never report one.
+    pub value: Option<String>,
+    pub href: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct BrowserPage {
+    pub url: String,
+    pub title: String,
+    pub text: String,
+    pub elements: Vec<BrowserPageElement>,
+    /// The text or the elements were cut at their limits.
+    pub truncated: bool,
+    /// A base64 JPEG, when asked for.
+    pub screenshot: Option<String>,
+}
+
+/// One action on the open page. Element numbers come from the last read of the page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BrowserPageAction {
+    Navigate {
+        url: String,
+    },
+    Click {
+        index: u32,
+    },
+    Type {
+        index: u32,
+        text: String,
+        submit: bool,
+    },
+    Key {
+        key: String,
+    },
+    Scroll {
+        pixels: i32,
+    },
+    Back,
+    Wait {
+        milliseconds: u32,
+    },
+}
+
+/// Debug hides the credential.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartAgentRun {
+    /// What the agent should do, in plain language.
+    pub task: String,
+    /// The AI Gateway endpoint that decides each step, in this workspace.
+    pub endpoint_id: String,
+    /// The endpoint's credential. Kept in memory for the run only.
+    pub credential: String,
+    /// Default 25, at most 100.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<u32>,
+}
+
+impl std::fmt::Debug for StartAgentRun {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StartAgentRun")
+            .field("task", &self.task)
+            .field("endpoint_id", &self.endpoint_id)
+            .field("credential", &"[hidden]")
+            .field("max_steps", &self.max_steps)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct AgentRunStep {
+    pub number: u32,
+    pub url: String,
+    pub thought: String,
+    /// What the step did. Typed text is left out.
+    pub actions: Vec<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRun {
+    pub id: String,
+    pub session_id: String,
+    /// `running`, `succeeded`, `failed` or `stopped`.
+    pub status: String,
+    pub max_steps: u32,
+    pub steps: Vec<AgentRunStep>,
+    /// The agent's answer, or why it could not finish.
+    pub result: Option<String>,
+    pub error_code: Option<String>,
+    pub started_at: String,
+    pub finished_at: Option<String>,
 }

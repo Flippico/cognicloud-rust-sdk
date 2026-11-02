@@ -132,6 +132,24 @@ println!("{:?}", page.get_title().await?);
 client.browser().sessions().stop(&session.id).await?;
 ```
 
+Without a CDP client, read and use the page, or let an agent do it through an AI Gateway endpoint. Each step of an agent run is a call billed to the endpoint.
+
+```rust
+use cognicloud_sdk::{BrowserPageAction, StartAgentRun};
+
+let sessions = client.browser().sessions();
+let page = sessions.read_page(&session.id, false).await?;
+sessions.act(&session.id, &BrowserPageAction::Click { index: 3 }, false).await?;
+
+let run = sessions.start_agent_run(&session.id, &StartAgentRun {
+    task: "Find the price of the Pro plan".to_owned(),
+    endpoint_id,
+    credential,
+    max_steps: None,
+}).await?;
+let result = sessions.get_agent_run(&session.id, &run.id).await?.result;
+```
+
 - `timeout_minutes` is 1 to 240 and defaults to 15 (`None` uses the default). The session stops by itself when the timeout passes.
 - Closing the CDP connection does not stop the session. Call `sessions().stop` as above.
 - `status` is `BrowserStatus::Active` or `BrowserStatus::Stopped`. `cdp_url` and `live_url` are `None` once the session has stopped. `live_url` is a page where a person can watch and take over the browser.

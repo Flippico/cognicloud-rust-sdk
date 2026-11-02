@@ -1,6 +1,8 @@
-use cognicloud_sdk::{BrowserStatus, Client, CreateBrowserSession, Error};
+use cognicloud_sdk::{
+    BrowserPageAction, BrowserStatus, Client, CreateBrowserSession, Error, StartAgentRun,
+};
 use serde_json::json;
-use wiremock::matchers::{body_json, header, method, path};
+use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn session() -> serde_json::Value {
@@ -271,4 +273,89 @@ async fn uploads_a_profile_archive_as_the_raw_body() {
         .await
         .unwrap();
     assert_eq!(profile.id, "5f1c9a2e");
+}
+
+#[tokio::test]
+async fn reads_acts_and_runs_an_agent_on_a_session() {
+    let server = MockServer::start().await;
+    let page = json!({
+        "url": "https://a.test/",
+        "title": "A",
+        "text": "Welcome",
+        "elements": [{ "index": 1, "tag": "button", "kind": null, "label": "Sign in", "value": null, "href": null }],
+        "truncated": false,
+        "screenshot": "ZmFrZQ=="
+    });
+    let run = json!({
+        "id": "r1",
+        "sessionId": "s1",
+        "status": "running",
+        "maxSteps": 25,
+        "steps": [{ "number": 1, "url": "https://a.test/", "thought": "t", "actions": ["click element 1"], "error": null }],
+        "result": null,
+        "errorCode": null,
+        "startedAt": "2026-11-02T10:00:00Z",
+        "finishedAt": null
+    });
+    Mock::given(method("GET"))
+        .and(path("/v1/browser/sessions/s1/page"))
+        .and(query_param("screenshot", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page.clone()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/browser/sessions/s1/page/actions"))
+        .and(body_json(json!({ "type": "click", "index": 1 })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/browser/sessions/s1/agent-runs"))
+        .and(body_json(
+            json!({ "task": "Sign in", "endpointId": "e1", "credential": "secret" }),
+        ))
+        .respond_with(ResponseTemplate::new(202).set_body_json(run.clone()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/browser/sessions/s1/agent-runs/r1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(run.clone()))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/browser/sessions/s1/agent-runs/r1/stop"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(run))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client(&server).await;
+    let browser = client.browser();
+    let sessions = browser.sessions();
+    let page = sessions.read_page("s1", true).await.unwrap();
+    assert_eq!(page.elements[0].label, "Sign in");
+    assert_eq!(page.screenshot.as_deref(), Some("ZmFrZQ=="));
+    sessions
+        .act("s1", &BrowserPageAction::Click { index: 1 }, false)
+        .await
+        .unwrap();
+    let input = StartAgentRun {
+        task: "Sign in".to_owned(),
+        endpoint_id: "e1".to_owned(),
+        credential: "secret".to_owned(),
+        max_steps: None,
+    };
+    assert!(!format!("{input:?}").contains("secret"));
+    assert_eq!(
+        sessions.start_agent_run("s1", &input).await.unwrap().status,
+        "running"
+    );
+    assert_eq!(
+        sessions.get_agent_run("s1", "r1").await.unwrap().steps[0].actions,
+        ["click element 1"]
+    );
+    sessions.stop_agent_run("s1", "r1").await.unwrap();
 }

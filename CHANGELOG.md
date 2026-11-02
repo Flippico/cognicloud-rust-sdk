@@ -2,6 +2,11 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] - 2026-11-02
+
+### Added
+- Browser sessions: `read_page` and `act` control a page without a CDP client. `start_agent_run`, `get_agent_run` and `stop_agent_run` run an agent in the service. Needs browser service 0.6.0.
+
 ## [0.20.0] - 2026-11-02
 
 ### Added
