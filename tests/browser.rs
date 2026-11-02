@@ -1,5 +1,6 @@
 use cognicloud_sdk::{
-    BrowserPageAction, BrowserStatus, Client, CreateBrowserSession, Error, StartAgentRun,
+    BrowserPageAction, BrowserStatus, Client, CreateBrowserSession, CreateStepRun, Error, RunStep,
+    StartAgentRun,
 };
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path, query_param};
@@ -358,4 +359,96 @@ async fn reads_acts_and_runs_an_agent_on_a_session() {
         ["click element 1"]
     );
     sessions.stop_agent_run("s1", "r1").await.unwrap();
+}
+
+#[tokio::test]
+async fn calls_each_step_run_route() {
+    let server = MockServer::start().await;
+    let run = json!({
+        "id": "r1",
+        "sessionId": "s1",
+        "endpointId": "e1",
+        "status": "waiting_for_upload",
+        "maxSteps": 25,
+        "stepsTaken": 1,
+        "steps": [{ "number": 1, "url": "https://a.test/", "thought": "t", "actions": ["upload file"], "error": null }],
+        "humanReason": null,
+        "uploadIndex": 4,
+        "result": null,
+        "marker": null,
+        "errorCode": null,
+        "createdAt": "2026-11-02T10:00:00Z",
+        "updatedAt": "2026-11-02T10:00:01Z",
+        "finishedAt": null
+    });
+    let runs = "/v1/browser/sessions/s1/step-runs";
+    Mock::given(method("POST"))
+        .and(path(runs))
+        .and(body_json(json!({ "task": "Go", "endpointId": "e1" })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(run.clone()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("{runs}/r1")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(run.clone()))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!("{runs}/r1/step")))
+        .and(body_json(
+            json!({ "credential": "secret", "timeoutSeconds": 60 }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(run.clone()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    for action in ["human-done", "upload", "messages", "continue", "stop"] {
+        Mock::given(method("POST"))
+            .and(path(format!("{runs}/r1/{action}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(run.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+
+    let client = client(&server).await;
+    let browser = client.browser();
+    let sessions = browser.sessions();
+    let created = sessions
+        .create_step_run(
+            "s1",
+            &CreateStepRun {
+                task: "Go".to_owned(),
+                endpoint_id: "e1".to_owned(),
+                max_steps: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(created.upload_index, Some(4));
+    assert_eq!(
+        sessions.get_step_run("s1", "r1").await.unwrap().steps[0].actions,
+        ["upload file"]
+    );
+    let step = RunStep {
+        credential: "secret".to_owned(),
+        timeout_seconds: Some(60),
+    };
+    assert!(!format!("{step:?}").contains("secret"));
+    sessions.run_step("s1", "r1", &step).await.unwrap();
+    sessions.step_run_human_done("s1", "r1").await.unwrap();
+    sessions
+        .report_step_run_upload("s1", "r1", Some("no field"))
+        .await
+        .unwrap();
+    sessions
+        .send_step_run_message("s1", "r1", "Hi")
+        .await
+        .unwrap();
+    sessions
+        .continue_step_run("s1", "r1", "Next", None)
+        .await
+        .unwrap();
+    sessions.stop_step_run("s1", "r1").await.unwrap();
 }

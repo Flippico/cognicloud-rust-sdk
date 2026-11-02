@@ -2,6 +2,11 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.22.0] - 2026-11-02
+
+### Added
+- Browser sessions: stored runs that do one step per request. `create_step_run`, `get_step_run`, `run_step`, `step_run_human_done`, `report_step_run_upload`, `send_step_run_message`, `continue_step_run` and `stop_step_run`. Needs browser service 0.7.0.
+
 ## [0.21.0] - 2026-11-02
 
 ### Added

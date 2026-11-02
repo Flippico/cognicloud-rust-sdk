@@ -135,7 +135,7 @@ client.browser().sessions().stop(&session.id).await?;
 Without a CDP client, read and use the page, or let an agent do it through an AI Gateway endpoint. Each step of an agent run is a call billed to the endpoint.
 
 ```rust
-use cognicloud_sdk::{BrowserPageAction, StartAgentRun};
+use cognicloud_sdk::{BrowserPageAction, CreateStepRun, RunStep, StartAgentRun};
 
 let sessions = client.browser().sessions();
 let page = sessions.read_page(&session.id, false).await?;
@@ -148,6 +148,17 @@ let run = sessions.start_agent_run(&session.id, &StartAgentRun {
     max_steps: None,
 }).await?;
 let result = sessions.get_agent_run(&session.id, &run.id).await?.result;
+
+// For serverless callers: a stored run that does one step per request.
+let stored = sessions.create_step_run(&session.id, &CreateStepRun {
+    task: "Find the price".to_owned(),
+    endpoint_id,
+    max_steps: None,
+}).await?;
+let after = sessions.run_step(&session.id, &stored.id, &RunStep {
+    credential,
+    timeout_seconds: Some(120),
+}).await?;
 ```
 
 - `timeout_minutes` is 1 to 240 and defaults to 15 (`None` uses the default). The session stops by itself when the timeout passes.

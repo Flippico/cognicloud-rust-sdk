@@ -270,6 +270,121 @@ impl BrowserSessionsApi<'_> {
             .await
     }
 
+    /// Stores a run that advances one request at a time. Nothing runs until [`run_step`](Self::run_step). The task is
+    /// stored encrypted.
+    pub async fn create_step_run(&self, id: &str, input: &CreateStepRun) -> Result<StepRun> {
+        let body =
+            serde_json::to_value(input).map_err(|error| crate::Error::Config(error.to_string()))?;
+        self.api
+            .http
+            .send(Call {
+                method: reqwest::Method::POST,
+                path: format!("/sessions/{}/step-runs", crate::client::encode(id)),
+                headers: self.api.headers.clone(),
+                query: Vec::new(),
+                body: Some(body),
+                retry: false,
+            })
+            .await
+    }
+
+    pub async fn get_step_run(&self, id: &str, run_id: &str) -> Result<StepRun> {
+        self.api
+            .get(&format!(
+                "/sessions/{}/step-runs/{}",
+                crate::client::encode(id),
+                crate::client::encode(run_id)
+            ))
+            .await
+    }
+
+    async fn step_run_post(
+        &self,
+        id: &str,
+        run_id: &str,
+        action: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<StepRun> {
+        self.api
+            .http
+            .send(Call {
+                method: reqwest::Method::POST,
+                path: format!(
+                    "/sessions/{}/step-runs/{}/{action}",
+                    crate::client::encode(id),
+                    crate::client::encode(run_id)
+                ),
+                headers: self.api.headers.clone(),
+                query: Vec::new(),
+                body,
+                retry: false,
+            })
+            .await
+    }
+
+    /// Runs one step within this request. A step that fails or runs out of time still returns: read `status` and the
+    /// step's `error`. Never retried, because a step can spend model tokens and change the page.
+    pub async fn run_step(&self, id: &str, run_id: &str, input: &RunStep) -> Result<StepRun> {
+        let body =
+            serde_json::to_value(input).map_err(|error| crate::Error::Config(error.to_string()))?;
+        self.step_run_post(id, run_id, "step", Some(body)).await
+    }
+
+    /// The person finished what `human_reason` asked.
+    pub async fn step_run_human_done(&self, id: &str, run_id: &str) -> Result<StepRun> {
+        self.step_run_post(id, run_id, "human-done", None).await
+    }
+
+    /// Call after putting the file on the page over the session's `cdp_url`, with `error` if that failed.
+    pub async fn report_step_run_upload(
+        &self,
+        id: &str,
+        run_id: &str,
+        error: Option<&str>,
+    ) -> Result<StepRun> {
+        let body = error.map_or_else(
+            || serde_json::json!({}),
+            |error| serde_json::json!({ "error": error }),
+        );
+        self.step_run_post(id, run_id, "upload", Some(body)).await
+    }
+
+    /// The next step reads it. A run waiting for the person becomes ready.
+    pub async fn send_step_run_message(
+        &self,
+        id: &str,
+        run_id: &str,
+        text: &str,
+    ) -> Result<StepRun> {
+        self.step_run_post(
+            id,
+            run_id,
+            "messages",
+            Some(serde_json::json!({ "text": text })),
+        )
+        .await
+    }
+
+    /// Gives a run that is done its next task, in the same conversation and browser.
+    pub async fn continue_step_run(
+        &self,
+        id: &str,
+        run_id: &str,
+        task: &str,
+        max_steps: Option<u32>,
+    ) -> Result<StepRun> {
+        let mut body = serde_json::json!({ "task": task });
+        if let Some(max_steps) = max_steps {
+            body["maxSteps"] = serde_json::json!(max_steps);
+        }
+        self.step_run_post(id, run_id, "continue", Some(body)).await
+    }
+
+    /// The session keeps running.
+    pub async fn stop_step_run(&self, id: &str, run_id: &str) -> Result<StepRun> {
+        self.step_run_post(id, run_id, "stop", None).await
+    }
+
     /// The session keeps running.
     pub async fn stop_agent_run(&self, id: &str, run_id: &str) -> Result<AgentRun> {
         self.api
@@ -288,6 +403,64 @@ impl BrowserSessionsApi<'_> {
             })
             .await
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateStepRun {
+    /// What the agent should do. At most 40,000 characters. Stored encrypted.
+    pub task: String,
+    /// The AI Gateway endpoint that decides each step, in this workspace.
+    pub endpoint_id: String,
+    /// Default 25, at most 100.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<u32>,
+}
+
+/// Debug hides the credential.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunStep {
+    /// The endpoint's credential. Used for this step only, and never stored.
+    pub credential: String,
+    /// The longest this step may take. Default 120, from 10 to 280. Keep it below your own request limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_seconds: Option<u32>,
+}
+
+impl std::fmt::Debug for RunStep {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RunStep")
+            .field("credential", &"[hidden]")
+            .field("timeout_seconds", &self.timeout_seconds)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StepRun {
+    pub id: String,
+    pub session_id: String,
+    pub endpoint_id: String,
+    /// `ready`, `stepping`, `waiting_for_human`, `waiting_for_upload`, `done`, `failed` or `stopped`.
+    pub status: String,
+    pub max_steps: u32,
+    pub steps_taken: u32,
+    pub steps: Vec<AgentRunStep>,
+    /// What to ask the person, while `waiting_for_human`.
+    pub human_reason: Option<String>,
+    /// The numbered file field, while `waiting_for_upload`. `None` means the page's first file field.
+    pub upload_index: Option<u32>,
+    /// The model's reply, or why the run failed.
+    pub result: Option<String>,
+    /// The word on the reply's RESULT line.
+    pub marker: Option<String>,
+    pub error_code: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub finished_at: Option<String>,
 }
 
 fn screenshot_query(screenshot: bool) -> Vec<(&'static str, String)> {

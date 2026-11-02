@@ -19,7 +19,8 @@ mod web_builder;
 pub use browser::{
     AgentRun, AgentRunStep, BrowserApi, BrowserConcurrency, BrowserPage, BrowserPageAction,
     BrowserPageElement, BrowserProfile, BrowserScreen, BrowserSession, BrowserSessionList,
-    BrowserSessionsApi, BrowserStatus, CreateBrowserSession, ProxyCountry, StartAgentRun,
+    BrowserSessionsApi, BrowserStatus, CreateBrowserSession, CreateStepRun, ProxyCountry, RunStep,
+    StartAgentRun, StepRun,
 };
 pub use client::{
     encode_tenant, BrowserClient, Client, ClientBuilder, DatabaseClient, EndpointClient, Locale,
