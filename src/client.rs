@@ -4,6 +4,7 @@ use std::time::Duration;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::agents::{AgentsApi, RunsApi, SkillsApi};
 use crate::browser::BrowserApi;
 use crate::database::{self, DatabaseApi, DatabaseTable, QueryResult, Statement, TableApi};
 use crate::embeddings::{EmbeddingsRequest, EmbeddingsResult};
@@ -11,6 +12,7 @@ use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
 use crate::mail::MailApi;
+use crate::marketplace::MarketplaceApi;
 use crate::responses::{ResponseResult, ResponsesRequest};
 use crate::stream::ResponseStream;
 use crate::web_builder::WebBuilderApi;
@@ -52,6 +54,10 @@ pub struct Options {
     pub database_base_url: String,
     /// The web builder's base. Default `https://cognicloud.dev/api/v1/web-builder`.
     pub web_builder_base_url: String,
+    /// The agents service's base. Default `https://cognicloud.dev/api/v1/agents`.
+    pub agents_base_url: String,
+    /// The marketplace's base. Default `https://cognicloud.dev/api/v1/marketplace`.
+    pub marketplace_base_url: String,
 }
 
 impl Default for Options {
@@ -66,6 +72,8 @@ impl Default for Options {
             mail_base_url: "https://cognicloud.dev/api/v1/mail".to_owned(),
             database_base_url: "https://cognicloud.dev/api/v1/database".to_owned(),
             web_builder_base_url: "https://cognicloud.dev/api/v1/web-builder".to_owned(),
+            agents_base_url: "https://cognicloud.dev/api/v1/agents".to_owned(),
+            marketplace_base_url: "https://cognicloud.dev/api/v1/marketplace".to_owned(),
         }
     }
 }
@@ -236,10 +244,21 @@ impl fmt::Debug for EndpointClient {
 }
 
 /// Builds a [`Client`].
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ClientBuilder {
     token: Option<String>,
     options: Options,
+    tenant_set: bool,
+}
+
+impl fmt::Debug for ClientBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClientBuilder")
+            .field("token", &self.token.as_ref().map(|_| "Secret(****)"))
+            .field("options", &self.options)
+            .field("tenant_set", &self.tenant_set)
+            .finish()
+    }
 }
 
 impl ClientBuilder {
@@ -259,9 +278,11 @@ impl ClientBuilder {
         self
     }
 
-    /// The tenant (workspace) to manage, sent as the `tenant_id` header. Default `"cognicloud"`.
+    /// The tenant (workspace) to manage, sent as the `tenant_id` header. Default `"cognicloud"`. A `cga_` key or
+    /// `ccag_` credential names its workspace, so without this no tenant goes to the agents service or marketplace.
     pub fn tenant(mut self, tenant: impl Into<String>) -> Self {
         self.options.tenant = tenant.into();
+        self.tenant_set = true;
         self
     }
 
@@ -295,6 +316,16 @@ impl ClientBuilder {
         self
     }
 
+    pub fn agents_base_url(mut self, agents_base_url: impl Into<String>) -> Self {
+        self.options.agents_base_url = agents_base_url.into();
+        self
+    }
+
+    pub fn marketplace_base_url(mut self, marketplace_base_url: impl Into<String>) -> Self {
+        self.options.marketplace_base_url = marketplace_base_url.into();
+        self
+    }
+
     pub fn build(self) -> Result<Client> {
         let token = self
             .token
@@ -312,14 +343,24 @@ impl ClientBuilder {
         database.base_url = self.options.database_base_url.clone();
         let mut web_builder = http(&self.options)?;
         web_builder.base_url = self.options.web_builder_base_url.clone();
+        let mut agents = http(&self.options)?;
+        agents.base_url = self.options.agents_base_url.clone();
+        let mut marketplace = http(&self.options)?;
+        marketplace.base_url = self.options.marketplace_base_url.clone();
+        let names_workspace = token.starts_with("ccag_") || token.starts_with("cga_");
+        let agents_tenant =
+            (self.tenant_set || !names_workspace).then(|| self.options.tenant.clone());
         Ok(Client {
             token,
             tenant: self.options.tenant.clone(),
+            agents_tenant,
             http: http(&self.options)?,
             browser,
             mail,
             database,
             web_builder,
+            agents,
+            marketplace,
         })
     }
 }
@@ -328,11 +369,14 @@ impl ClientBuilder {
 pub struct Client {
     token: String,
     tenant: String,
+    agents_tenant: Option<String>,
     http: Http,
     browser: Http,
     mail: Http,
     database: Http,
     web_builder: Http,
+    agents: Http,
+    marketplace: Http,
 }
 
 /// The browser product alone. The key is a browser key from the dashboard (Browser → API keys). It names its
@@ -451,6 +495,28 @@ impl Client {
 
     pub fn web_builder(&self) -> WebBuilderApi<'_> {
         WebBuilderApi::new(&self.web_builder, &self.token, &self.tenant)
+    }
+
+    /// Agents, their keys and action log. A `ccag_` credential gets `403 forbidden` here.
+    pub fn agents(&self) -> AgentsApi<'_> {
+        AgentsApi::new(&self.agents, &self.token, self.agents_tenant.as_deref())
+    }
+
+    pub fn skills(&self) -> SkillsApi<'_> {
+        SkillsApi::new(&self.agents, &self.token, self.agents_tenant.as_deref())
+    }
+
+    /// Runs of agents. A client built with an agent's `ccag_` credential reaches only that agent's runs.
+    pub fn runs(&self) -> RunsApi<'_> {
+        RunsApi::new(&self.agents, &self.token, self.agents_tenant.as_deref())
+    }
+
+    pub fn marketplace(&self) -> MarketplaceApi<'_> {
+        MarketplaceApi::new(
+            &self.marketplace,
+            &self.token,
+            self.agents_tenant.as_deref(),
+        )
     }
 }
 

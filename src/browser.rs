@@ -50,7 +50,7 @@ pub struct BrowserSessionList {
     pub concurrency: BrowserConcurrency,
 }
 
-/// The options for a new session. Proxies, screens, captchas and recording are not available yet.
+/// The options for a new session. Proxies, captchas and recording are not available yet.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateBrowserSession {
@@ -63,6 +63,10 @@ pub struct CreateBrowserSession {
     /// The window size: 320 to 6144 wide and 320 to 3456 high. Chrome starts with it. `None` keeps Chrome's default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub screen: Option<BrowserScreen>,
+    /// A visible Chrome window instead of a headless one, for sites that turn headless Chrome away. Needs browser
+    /// service 0.10.0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headful: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

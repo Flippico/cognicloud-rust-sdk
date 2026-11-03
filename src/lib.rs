@@ -1,7 +1,9 @@
 //! CogniCloud SDK: call AI Gateway endpoints and manage them.
 //!
-//! This version covers AI Gateway endpoints and browser sessions. Agents, scraping, vault and activity come later.
+//! This version covers AI Gateway endpoints, browser sessions, mail, databases, the web builder, agents, their runs
+//! and the marketplace. Scraping, vault and activity come later.
 
+mod agents;
 mod browser;
 mod client;
 mod database;
@@ -11,11 +13,18 @@ mod error;
 mod files;
 mod http;
 mod mail;
+mod marketplace;
 mod responses;
 mod secret;
 mod stream;
 mod web_builder;
 
+pub use agents::{
+    ActionLog, ActionLogList, ActionLogListOptions, Agent, AgentCredential, AgentKey, AgentKeysApi,
+    AgentStatus, AgentsApi, CreateAgent, CreateSkill, CreatedAgent, PublishAgent, Run,
+    RunErrorCode, RunList, RunListOptions, RunStatus, RunStepDetail, RunWaitOptions, RunsApi,
+    Skill, SkillVersion, SkillsApi, UpdateAgent, UpdateSkill,
+};
 pub use browser::{
     AgentRun, AgentRunStep, BrowserApi, BrowserConcurrency, BrowserPage, BrowserPageAction,
     BrowserPageElement, BrowserProfile, BrowserScreen, BrowserSession, BrowserSessionList,
@@ -46,6 +55,7 @@ pub use mail::{
     MailDomainsApi, MailServerEndpoint, Mailbox, MailboxList, MailboxListOptions,
     RotatedMailboxPassword,
 };
+pub use marketplace::{MarketplaceApi, Template, TemplatePublisher, TemplateSkill};
 pub use responses::{McpTool, ResponseResult, ResponsesRequest, ToolChoice};
 pub use secret::Secret;
 pub use stream::{ResponseStream, StreamEvent};

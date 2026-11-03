@@ -344,3 +344,13 @@ fn the_default_tenant_is_named_in_hex_in_the_invoke_url() {
         "https://cognicloud.dev/api/v1/ai-gateway/invoke/636f676e69636c6f7564/e1"
     );
 }
+
+#[test]
+fn the_client_builder_hides_the_token_in_debug() {
+    let builder = Client::builder()
+        .token("ccag_6163_supersecret")
+        .tenant("acme");
+    let printed = format!("{builder:?}");
+    assert!(!printed.contains("supersecret"), "{printed}");
+    assert!(printed.contains("acme"), "{printed}");
+}

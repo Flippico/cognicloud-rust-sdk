@@ -195,6 +195,24 @@ async fn lists_countries_and_profiles_as_empty_until_they_exist() {
 }
 
 #[tokio::test]
+async fn a_session_can_start_a_visible_window() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/browser/sessions"))
+        .and(body_json(json!({ "headful": true })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(session()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = client(&server).await;
+    let options = CreateBrowserSession {
+        headful: Some(true),
+        ..Default::default()
+    };
+    client.browser().sessions().create(&options).await.unwrap();
+}
+
+#[tokio::test]
 async fn a_session_takes_a_window_size_and_returns_it() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

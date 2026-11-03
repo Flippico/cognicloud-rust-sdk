@@ -2,13 +2,13 @@
 
 Call CogniCloud AI Gateway endpoints and manage them from async Rust on Tokio. Same behaviour as [`@cognicloud/sdk`](https://github.com/Flippico/cognicloud-js-sdk).
 
-> Version 0.3.0. Covers AI Gateway endpoints and browser sessions; agents, scraping, vault and activity come later. See [CHANGELOG.md](./CHANGELOG.md).
+> Version 0.24.0. Covers AI Gateway endpoints, browser sessions, mail, databases, the web builder, agents with their runs, and the marketplace; scraping, vault and activity come later. See [CHANGELOG.md](./CHANGELOG.md).
 
 ## Install
 
 ```toml
 [dependencies]
-cognicloud-sdk = "0.4"
+cognicloud-sdk = "0.24"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde_json = "1"
 ```
@@ -121,7 +121,7 @@ let client = Client::builder().token(amadeus_token).build()?;
 let session = client
     .browser()
     .sessions()
-    .create(&CreateBrowserSession { timeout_minutes: Some(15) })
+    .create(&CreateBrowserSession { timeout_minutes: Some(15), ..Default::default() })
     .await?;
 
 let (browser, mut handler) = chromiumoxide::Browser::connect(session.cdp_url.clone().unwrap()).await?;
@@ -165,7 +165,8 @@ let after = sessions.run_step(&session.id, &stored.id, &RunStep {
 - Closing the CDP connection does not stop the session. Call `sessions().stop` as above.
 - `status` is `BrowserStatus::Active` or `BrowserStatus::Stopped`. `cdp_url` and `live_url` are `None` once the session has stopped. `live_url` is a page where a person can watch and take over the browser.
 - `sessions().list()` returns the workspace's sessions, newest first, with `concurrency.active` and `concurrency.limit`. A start beyond the limit fails with status `429` and code `concurrency_limit`.
-- Proxy countries, profiles, screen sizes, captcha solving and recording are not available yet. `countries()` and `profiles()` return empty lists, and `CreateBrowserSession` has no field for those options.
+- `screen` sets the window size, and `headful: Some(true)` starts a visible Chrome window instead of a headless one, for sites that turn headless Chrome away (browser service 0.10.0).
+- Proxy countries, captcha solving and recording are not available yet. `countries()` returns an empty list, and `CreateBrowserSession` has no field for those options.
 
 ## Mail
 
@@ -272,6 +273,81 @@ api.disable_auto_deploy(&app.id).await?;
 
 `update` starts a build, and a paused site has `status` set to `paused`. `create_repository` and the auto-deploy methods need a connected GitHub account: `authorize_github`, `connect_github`, `github_repositories` and `disconnect_github`.
 
+## Agents
+
+An agent answers through one of your AI Gateway endpoints, with its instructions and skills. Create one, then run it.
+
+```rust
+use cognicloud_sdk::{CreateAgent, CreateSkill};
+
+let skill = cc.skills().create(&CreateSkill {
+    name: "Cite".to_owned(),
+    description: "When the answer uses a source".to_owned(),
+    body: "Name every source you use.".to_owned(),
+}).await?;
+
+let created = cc.agents().create(&CreateAgent {
+    name: "Researcher".to_owned(),
+    endpoint_id,
+    instructions: "Answer briefly.".to_owned(),
+    tools: Vec::new(),
+    max_steps: 10,
+    timeout_seconds: 300,
+    skill_ids: vec![skill.id],
+    ..Default::default()
+}).await?;
+let credential = created.credential.secret.expose().clone(); // ccag_..., shown once
+```
+
+`agents()` also has `list`, `get`, `update`, `delete`, `rotate_credential`, `keys().list()`, `keys().revoke(id)` and `actions`. Pause an agent with `UpdateAgent { status: Some(AgentStatus::Paused), .. }`. `skills()` has `list`, `get`, `update`, `delete` and `versions`; every change keeps the earlier version. `publish` and `unpublish` are planned and answer `503` for now.
+
+### Runs
+
+```rust
+use std::time::Duration;
+use cognicloud_sdk::{RunListOptions, RunStatus, RunWaitOptions};
+
+let run = cc
+    .runs()
+    .run_and_wait(&agent_id, "Summarise KSeF in two sentences.", RunWaitOptions::default())
+    .await?;
+let quick = cc
+    .runs()
+    .run_and_wait(&agent_id, "Say hi.", RunWaitOptions { poll_interval: Duration::from_millis(500), timeout: Duration::from_secs(60) })
+    .await?;
+match run.status {
+    RunStatus::Completed => println!("{}", run.output.unwrap_or_default()),
+    _ => println!("{:?}: {:?}", run.error_code, run.error_message),
+}
+
+let started = cc.runs().start(&agent_id, "Check the status page.").await?;
+let now = cc.runs().get(&started.id).await?;
+cc.runs().stop(&started.id).await?;
+let page = cc.runs().list(&agent_id, RunListOptions { limit: Some(20), cursor: None }).await?;
+```
+
+- `start` returns at once with `RunStatus::Running`. A run ends `Completed`, `Failed` or `Stopped`; `steps` hold each step's `thought`, `tool` and `summary`.
+- `run_and_wait` reads the run every `poll_interval` and returns it when it is no longer running, failed and stopped runs included. Only `timeout` passing is an error, `Error::Timeout`, and the run keeps going. `RunWaitOptions::default()` polls every 2 seconds for up to 15 minutes.
+- `error_code` is `MaxSteps`, `Timeout`, `ModelError`, `InvalidAnswer`, `Interrupted` or `Stopped`. Codes and statuses this version does not know read as `Unknown`.
+- Starting fails with `agent_paused` (409), `endpoint_missing` (422) or `limit_reached` (429, at most 3 running at once). It is never retried.
+- In this release every tool answers "not available yet"; the run calls do not change when tools arrive.
+
+A client built with an agent's `ccag_` credential reaches only that agent's runs; other agents service calls answer `403 forbidden`. Marketplace calls need the signed-in person's session token; `ccag_` and `cga_` keys get `401`. A `ccag_` credential or a `cga_` key names its workspace, so without `.tenant(...)` no `tenant_id` is sent to the agents service or marketplace.
+
+```rust
+let agent = Client::builder().token(std::env::var("COGNICLOUD_AGENT_CREDENTIAL")?).build()?;
+let run = agent.runs().start(&agent_id, "Go").await?;
+```
+
+### Marketplace
+
+```rust
+let templates = cc.marketplace().list_templates(Some("research")).await?;
+let template = cc.marketplace().get_template(&templates[0].slug).await?;
+```
+
+Create an agent from one with `CreateAgent { template_slug: Some(template.slug), .. }`. `marketplace().actions` pages the marketplace's action log. Marketplace calls need the signed-in person's session token; `ccag_` and `cga_` keys get `401`.
+
 ## Responses with MCP tools
 
 ```rust
@@ -367,6 +443,8 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 | `mail_base_url` | `https://cognicloud.dev/api/v1/mail` | Mail service. |
 | `database_base_url` | `https://cognicloud.dev/api/v1/database` | Database service. |
 | `web_builder_base_url` | `https://cognicloud.dev/api/v1/web-builder` | Web builder service. |
+| `agents_base_url` | `https://cognicloud.dev/api/v1/agents` | Agents service: agents, skills, keys and runs. |
+| `marketplace_base_url` | `https://cognicloud.dev/api/v1/marketplace` | Agent templates. |
 
 Set them on the builder, or with `Options` for `EndpointClient::with_options`.
 

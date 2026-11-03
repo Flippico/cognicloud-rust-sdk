@@ -2,6 +2,17 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] - Unreleased
+
+### Added
+- `client.agents()`: `list`, `get`, `create`, `update`, `delete`, `rotate_credential`, `keys().list()`, `keys().revoke()` and `actions`. `publish` and `unpublish` are planned and answer `503` for now.
+- `client.skills()`: `list`, `get`, `create`, `update`, `delete` and `versions`.
+- `client.runs()`: `start`, `get`, `list`, `stop` and `run_and_wait(agent_id, input, RunWaitOptions)`, which polls until the run is no longer running and returns `Error::Timeout` when its timeout passes; `RunWaitOptions::default()` is every 2 seconds for up to 15 minutes. `Run`, `RunStatus`, `RunErrorCode`, `RunStepDetail` and `RunList`; statuses and codes this version does not know read as `Unknown`. Needs agents service 0.2.0.
+- `client.marketplace()`: `list_templates`, `get_template` and `actions`.
+- `agents_base_url` and `marketplace_base_url` builder options.
+- A client built with a `ccag_` credential or `cga_` key and no `.tenant(...)` sends no `tenant_id` to the agents service or marketplace. A `ccag_` credential reaches only its agent's runs.
+- `CreateBrowserSession::headful` starts a visible Chrome window. Needs browser service 0.10.0.
+
 ## [0.23.0] - 2026-11-02
 
 ### Added
