@@ -1,3 +1,5 @@
+mod common;
+use common::*;
 use std::time::Duration;
 
 use cognicloud_sdk::{
@@ -7,10 +9,6 @@ use cognicloud_sdk::{
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-const KEY: &str =
-    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 const AGENT: &str = "4f0b7a52-2c1d-4c8e-9a0e-0d1c2b3a4f5e";
 const RUN: &str = "9a8b7c6d-1e2f-4a3b-8c9d-0e1f2a3b4c5d";
@@ -78,18 +76,19 @@ fn run(status: &str) -> serde_json::Value {
 
 fn client(server: &MockServer) -> Client {
     Client::builder()
-        .api_key(KEY)
+        .with_keys()
         .agents_base_url(format!("{}/v1/agents", server.uri()))
         .build()
         .unwrap()
 }
 
 #[tokio::test]
-async fn creates_an_agent_with_the_session_and_tenant() {
+async fn creates_an_agent_with_the_account_and_agents_keys() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/agents/agents"))
-        .and(header("authorization", BEARER))
+        .and(header("authorization", bearer(AGENTS)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(body_json(json!({
             "name": "Researcher",
             "endpointId": "e1",
@@ -528,11 +527,12 @@ fn an_unknown_agent_status_is_never_sent() {
 }
 
 #[tokio::test]
-async fn an_agent_key_runs_its_agent_without_a_tenant() {
+async fn an_agents_key_with_the_account_key_runs_its_agent_without_a_tenant() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path(format!("/v1/agents/agents/{AGENT}/runs")))
-        .and(header("authorization", "Bearer cc_ag_636f676e69636c6f7564_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"))
+        .and(header("authorization", bearer(AGENTS)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .respond_with(ResponseTemplate::new(202).set_body_json(run("running")))
         .expect(1)
         .mount(&server)
@@ -547,7 +547,8 @@ async fn an_agent_key_runs_its_agent_without_a_tenant() {
         .await;
 
     let client = Client::builder()
-        .api_key("cc_ag_636f676e69636c6f7564_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+        .account_key(ACCOUNT)
+        .product_key(AGENTS)
         .agents_base_url(format!("{}/v1/agents", server.uri()))
         .build()
         .unwrap();
@@ -558,13 +559,4 @@ async fn an_agent_key_runs_its_agent_without_a_tenant() {
     assert!(requests
         .iter()
         .all(|request| request.headers.get("tenant_id").is_none()));
-}
-
-#[test]
-fn a_retired_agent_credential_is_refused() {
-    let error = Client::builder()
-        .api_key("ccag_6163_abc")
-        .build()
-        .unwrap_err();
-    assert_eq!(error.code(), "retired_key");
 }

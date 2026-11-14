@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::client::encode;
+use crate::credentials::Auth;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
 use crate::secret::Secret;
@@ -273,18 +274,12 @@ impl Default for RunWaitOptions {
 
 pub(crate) struct Service<'a> {
     http: &'a Http,
-    headers: Vec<(&'static str, String)>,
+    auth: Auth<'a>,
 }
 
 impl<'a> Service<'a> {
-    /// `tenant` is sent as the `tenant_id` header when given. A `ccag_` credential names its workspace, so it needs
-    /// none.
-    pub(crate) fn new(http: &'a Http, token: &str, tenant: Option<&str>) -> Self {
-        let mut headers = vec![("authorization", format!("Bearer {token}"))];
-        if let Some(tenant) = tenant {
-            headers.push(("tenant_id", tenant.to_owned()));
-        }
-        Self { http, headers }
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
+        Self { http, auth }
     }
 
     pub(crate) async fn call<T: DeserializeOwned>(
@@ -299,7 +294,7 @@ impl<'a> Service<'a> {
             .send(Call {
                 method,
                 path,
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query,
                 body,
                 retry,
@@ -353,9 +348,9 @@ pub struct AgentsApi<'a> {
 }
 
 impl<'a> AgentsApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &str, tenant: Option<&str>) -> Self {
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
         Self {
-            service: Service::new(http, token, tenant),
+            service: Service::new(http, auth),
         }
     }
 
@@ -436,9 +431,9 @@ pub struct SkillsApi<'a> {
 }
 
 impl<'a> SkillsApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &str, tenant: Option<&str>) -> Self {
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
         Self {
-            service: Service::new(http, token, tenant),
+            service: Service::new(http, auth),
         }
     }
 
@@ -480,16 +475,15 @@ impl<'a> SkillsApi<'a> {
     }
 }
 
-/// Starts, reads and stops runs of agents. Works with the person's session, a `cga_` key, or the agent's own `ccag_`
-/// credential, which reaches only that agent's runs.
+/// Starts, reads and stops runs of agents, with the account key and an Agents key (`cc_ag_`).
 pub struct RunsApi<'a> {
     service: Service<'a>,
 }
 
 impl<'a> RunsApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &str, tenant: Option<&str>) -> Self {
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
         Self {
-            service: Service::new(http, token, tenant),
+            service: Service::new(http, auth),
         }
     }
 

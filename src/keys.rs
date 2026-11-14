@@ -24,8 +24,9 @@ const PREFIXES: [(&str, KeyKind); 7] = [
 
 const RETIRED: [&str; 7] = ["cc_live_", "ccag_", "cga_", "cgb_", "cgd_", "cgm_", "cgv_"];
 
+const PAIR_SETTINGS: &str = "Create your account key and a product key for each product in the dashboard under Settings → API keys.";
 const SETTINGS: &str =
-    "Create an account key or a product key in the dashboard under Settings → API keys.";
+    "Create your account key and a product key for each product in the dashboard under Settings → API keys.";
 
 /// A CogniCloud API key read without a request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,4 +75,100 @@ pub fn parse_key(key: &str) -> Result<ParsedKey> {
         kind: *kind,
         tenant_hex: tenant_hex.to_owned(),
     })
+}
+
+/// The header that names the account key on every product call.
+pub(crate) const ACCOUNT_HEADER: &str = "x-cognicloud-account-key";
+
+pub(crate) fn product_label(kind: KeyKind) -> &'static str {
+    match kind {
+        KeyKind::Account => "Account",
+        KeyKind::Gateway => "AI Gateway",
+        KeyKind::Database => "Database",
+        KeyKind::Browser => "Browser",
+        KeyKind::Mail => "Mail",
+        KeyKind::Agents => "Agents",
+        KeyKind::Vault => "Vault",
+    }
+}
+
+fn prefix(kind: KeyKind) -> &'static str {
+    PREFIXES
+        .iter()
+        .find(|(_, candidate)| *candidate == kind)
+        .map_or("", |(prefix, _)| *prefix)
+}
+
+/// Reads the account key: `missing_account_key` when it is blank, `invalid_key` when it is another kind.
+pub(crate) fn read_account(key: &str) -> Result<ParsedKey> {
+    if key.trim().is_empty() {
+        return Err(key_error(
+            "missing_account_key",
+            format!("An account key is required. {PAIR_SETTINGS}"),
+        ));
+    }
+    let parsed = parse_key(key)?;
+    if parsed.kind != KeyKind::Account {
+        return Err(key_error(
+            "invalid_key",
+            format!("An account key (cc_acc_...) is needed here. {PAIR_SETTINGS}"),
+        ));
+    }
+    Ok(parsed)
+}
+
+/// Reads a product key. An account key is `invalid_key`.
+pub(crate) fn read_product(key: &str) -> Result<ParsedKey> {
+    let parsed = parse_key(key)?;
+    if parsed.kind == KeyKind::Account {
+        return Err(key_error(
+            "invalid_key",
+            format!("This is an account key, but a product key is needed here. {PAIR_SETTINGS}"),
+        ));
+    }
+    Ok(parsed)
+}
+
+/// Fails with `invalid_key` unless the key is the product key of `kind`.
+pub(crate) fn require_kind(parsed: &ParsedKey, kind: KeyKind) -> Result<()> {
+    if parsed.kind == kind {
+        return Ok(());
+    }
+    Err(key_error(
+        "invalid_key",
+        format!(
+            "The key must be the {} product key, starting with {}.",
+            product_label(kind),
+            prefix(kind)
+        ),
+    ))
+}
+
+/// Fails with `key_mismatch` unless both keys name the same workspace.
+pub(crate) fn check_workspace(account: &ParsedKey, product: &ParsedKey) -> Result<()> {
+    if account.tenant_hex == product.tenant_hex {
+        return Ok(());
+    }
+    Err(key_error(
+        "key_mismatch",
+        "The account key and the product key must be from one workspace.".to_owned(),
+    ))
+}
+
+fn article(kind: KeyKind) -> &'static str {
+    match kind {
+        KeyKind::Gateway => "an",
+        _ => "a",
+    }
+}
+
+pub(crate) fn missing_product(kind: KeyKind) -> Error {
+    key_error(
+        "missing_product_key",
+        format!(
+            "Add {} {} product key with .product_key(...), from Settings → API keys.",
+            article(kind),
+            product_label(kind)
+        ),
+    )
 }

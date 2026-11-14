@@ -1,15 +1,10 @@
+mod common;
 use cognicloud_sdk::{Client, DatabaseActionListOptions, Error, Statement};
+use common::*;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
-
-const KEY: &str =
-    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const DB_KEY: &str =
-    "cc_db_636f676e69636c6f7564_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
-const DB_BEARER: &str = "Bearer cc_db_636f676e69636c6f7564_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
 fn result() -> Value {
     json!({
@@ -22,7 +17,7 @@ fn result() -> Value {
 
 fn db_client(server: &MockServer) -> Client {
     Client::builder()
-        .api_key(DB_KEY)
+        .with_keys()
         .database_base_url(format!("{}/v1/database", server.uri()))
         .max_retries(0)
         .build()
@@ -32,7 +27,8 @@ fn db_client(server: &MockServer) -> Client {
 async fn answer(server: &MockServer, verb: &str, route: &str, expected: Value) {
     Mock::given(method(verb))
         .and(path(format!("/v1/database{route}")))
-        .and(header("authorization", DB_BEARER))
+        .and(header("authorization", bearer(DATABASE)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(body_json(expected))
         .respond_with(ResponseTemplate::new(200).set_body_json(result()))
         .expect(1)
@@ -41,14 +37,14 @@ async fn answer(server: &MockServer, verb: &str, route: &str, expected: Value) {
 }
 
 #[test]
-fn refuses_a_missing_key() {
-    let error = Client::builder().api_key(" ").build().unwrap_err();
-    assert_eq!(error.code(), "missing_key");
+fn refuses_a_missing_account_key() {
+    let error = Client::builder().account_key(" ").build().unwrap_err();
+    assert_eq!(error.code(), "missing_account_key");
     assert!(matches!(error, Error::Key { .. }));
 }
 
 #[tokio::test]
-async fn runs_sql_with_the_key_and_no_tenant() {
+async fn runs_sql_with_both_keys_and_no_tenant() {
     let server = MockServer::start().await;
     answer(
         &server,
@@ -302,7 +298,7 @@ async fn inserts_updates_and_deletes() {
 
 async fn person(server: &MockServer) -> Client {
     Client::builder()
-        .api_key(KEY)
+        .with_keys()
         .database_base_url(format!("{}/v1/database", server.uri()))
         .build()
         .unwrap()
@@ -314,7 +310,8 @@ async fn manages_databases_as_the_signed_in_person() {
     let database = json!({ "id": "db1", "name": "Orders", "createdAt": "2026-10-30T10:00:00Z" });
     Mock::given(method("POST"))
         .and(path("/v1/database/databases"))
-        .and(header("authorization", BEARER))
+        .and(header("authorization", bearer(DATABASE)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(body_json(json!({ "name": "Orders" })))
         .respond_with(ResponseTemplate::new(201).set_body_json(&database))
         .mount(&server)
@@ -381,7 +378,8 @@ async fn runs_sql_and_lists_tables_as_the_owner() {
     let value = "a078e7865b1073c4d2c1eaa92a9b5507";
     Mock::given(method("POST"))
         .and(path("/v1/database/databases/db1/query"))
-        .and(header("authorization", BEARER))
+        .and(header("authorization", bearer(DATABASE)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(body_json(
             json!({ "sql": "SELECT id FROM orders WHERE id = $1", "params": [value] }),
         ))
@@ -434,7 +432,8 @@ async fn an_account_key_names_the_database() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/database/query"))
-        .and(header("authorization", BEARER))
+        .and(header("authorization", bearer(DATABASE)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(header("x-database-id", "db1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(result()))
         .expect(1)

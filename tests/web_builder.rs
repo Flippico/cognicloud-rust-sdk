@@ -1,11 +1,9 @@
+mod common;
 use cognicloud_sdk::{Client, CreateApplication, UpdateApplication, WebBuilderActionListOptions};
+use common::*;
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-const KEY: &str =
-    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 const ID: &str = "7c1f0c2e-6a5b-4d3e-9f10-1a2b3c4d5e6f";
 
@@ -25,18 +23,18 @@ fn application() -> serde_json::Value {
 
 fn client(server: &MockServer) -> Client {
     Client::builder()
-        .api_key(KEY)
+        .with_keys()
         .web_builder_base_url(format!("{}/v1/web-builder", server.uri()))
         .build()
         .unwrap()
 }
 
 #[tokio::test]
-async fn creates_an_application_with_the_session_and_tenant() {
+async fn creates_an_application_with_the_account_key_alone() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/web-builder/applications"))
-        .and(header("authorization", BEARER))
+        .and(header("authorization", bearer(ACCOUNT)))
         .and(body_json(json!({ "subdomain": "shop" })))
         .respond_with(ResponseTemplate::new(201).set_body_json(application()))
         .expect(1)

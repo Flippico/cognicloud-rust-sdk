@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::client::encode;
+use crate::credentials::Auth;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
 
@@ -132,19 +133,19 @@ struct Order {
     desc: bool,
 }
 
-/// The key for the data routes, and the database an account key names (`x-database-id`).
+/// The auth of the data routes, and the database a request names (`x-database-id`).
 #[derive(Clone, Copy)]
 pub(crate) struct DataAuth<'a> {
-    pub(crate) key: &'a str,
+    pub(crate) auth: Auth<'a>,
     pub(crate) database: Option<&'a str>,
 }
 
-fn auth(key: DataAuth<'_>) -> Vec<(&'static str, String)> {
-    let mut headers = vec![("authorization", format!("Bearer {}", key.key))];
+fn auth(key: DataAuth<'_>) -> Result<Vec<(&'static str, String)>> {
+    let mut headers = key.auth.headers()?;
     if let Some(database) = key.database {
         headers.push(("x-database-id", database.to_owned()));
     }
-    headers
+    Ok(headers)
 }
 
 async fn post<T: DeserializeOwned>(
@@ -157,7 +158,7 @@ async fn post<T: DeserializeOwned>(
     http.send(Call {
         method: reqwest::Method::POST,
         path,
-        headers: auth(key),
+        headers: auth(key)?,
         query: Vec::new(),
         body: Some(body),
         retry,
@@ -374,7 +375,7 @@ pub(crate) async fn tables(http: &Http, key: DataAuth<'_>) -> Result<Vec<Databas
         .send(Call {
             method: reqwest::Method::GET,
             path: "/tables".to_owned(),
-            headers: auth(key),
+            headers: auth(key)?,
             query: Vec::new(),
             body: None,
             retry: true,
@@ -394,57 +395,54 @@ pub(crate) fn table<'a>(http: &'a Http, key: DataAuth<'a>, name: &str) -> TableA
 /// Creates, lists and removes hosted Postgres databases, and queries them with [`DatabaseApi::data`].
 pub struct DatabaseApi<'a> {
     http: &'a Http,
-    token: &'a str,
+    auth: Auth<'a>,
 }
 
 impl<'a> DatabaseApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &'a str) -> Self {
-        Self { http, token }
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
+        Self { http, auth }
     }
 
-    fn headers(&self) -> Vec<(&'static str, String)> {
-        vec![("authorization", format!("Bearer {}", self.token))]
-    }
-
-    /// SQL and the query builder. Pass `database_id` with an account key; a key for one database needs none.
+    /// SQL and the query builder. Pass `database_id` to name the database; a database key limited to one database
+    /// needs none.
     pub fn data(&self, database_id: Option<&'a str>) -> DatabaseData<'a> {
         DatabaseData {
             http: self.http,
             auth: DataAuth {
-                key: self.token,
+                auth: self.auth,
                 database: database_id,
             },
         }
     }
 
-    fn call(&self, method: reqwest::Method, path: String) -> Call<'static> {
-        Call {
+    fn call(&self, method: reqwest::Method, path: String) -> Result<Call<'static>> {
+        Ok(Call {
             method,
             path,
-            headers: self.headers(),
+            headers: self.auth.headers()?,
             query: Vec::new(),
             body: None,
             retry: true,
-        }
+        })
     }
 
     /// Newest first.
     pub async fn list(&self) -> Result<Vec<HostedDatabase>> {
         let list: DatabaseList = self
             .http
-            .send(self.call(reqwest::Method::GET, "/databases".to_owned()))
+            .send(self.call(reqwest::Method::GET, "/databases".to_owned())?)
             .await?;
         Ok(list.items)
     }
 
     pub async fn get(&self, id: &str) -> Result<HostedDatabase> {
         let path = format!("/databases/{}", encode(id));
-        self.http.send(self.call(reqwest::Method::GET, path)).await
+        self.http.send(self.call(reqwest::Method::GET, path)?).await
     }
 
     /// Creates an empty database. You can have up to 3.
     pub async fn create(&self, name: &str) -> Result<HostedDatabase> {
-        let mut call = self.call(reqwest::Method::POST, "/databases".to_owned());
+        let mut call = self.call(reqwest::Method::POST, "/databases".to_owned())?;
         call.body = Some(json!({ "name": name }));
         call.retry = false;
         self.http.send(call).await
@@ -455,7 +453,7 @@ impl<'a> DatabaseApi<'a> {
         let mut call = self.call(
             reqwest::Method::DELETE,
             format!("/databases/{}", encode(id)),
-        );
+        )?;
         call.retry = false;
         self.http.send::<Value>(call).await.map(|_| ())
     }
@@ -466,7 +464,7 @@ impl<'a> DatabaseApi<'a> {
         let mut call = self.call(
             reqwest::Method::POST,
             format!("/databases/{}/query", encode(id)),
-        );
+        )?;
         call.body = Some(json!({ "sql": sql, "params": params }));
         call.retry = false;
         self.http.send(call).await
@@ -477,14 +475,14 @@ impl<'a> DatabaseApi<'a> {
         let path = format!("/databases/{}/tables", encode(id));
         let list: TableList = self
             .http
-            .send(self.call(reqwest::Method::GET, path))
+            .send(self.call(reqwest::Method::GET, path)?)
             .await?;
         Ok(list.tables)
     }
 
     /// Creating and deleting databases and keys, newest first. Queries are not listed.
     pub async fn actions(&self, options: DatabaseActionListOptions) -> Result<DatabaseActionList> {
-        let mut call = self.call(reqwest::Method::GET, "/actions".to_owned());
+        let mut call = self.call(reqwest::Method::GET, "/actions".to_owned())?;
         if let Some(limit) = options.limit {
             call.query.push(("limit", limit.to_string()));
         }

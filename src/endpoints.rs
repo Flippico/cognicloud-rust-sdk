@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::encode;
+use crate::credentials::Auth;
 use crate::error::Result;
 use crate::http::{Call, Http};
 use crate::secret::Secret;
@@ -149,16 +150,16 @@ struct DailyUsageList {
 /// Endpoint management, from [`Client::endpoints`](crate::Client::endpoints).
 pub struct EndpointsApi<'a> {
     http: &'a Http,
-    token: &'a str,
+    auth: Auth<'a>,
 }
 
 impl<'a> EndpointsApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &'a str) -> Self {
-        Self { http, token }
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
+        Self { http, auth }
     }
 
-    fn session(&self) -> Vec<(&'static str, String)> {
-        vec![("authorization", format!("Bearer {}", self.token))]
+    fn session(&self) -> Result<Vec<(&'static str, String)>> {
+        self.auth.headers()
     }
 
     fn path(id: &str, rest: &str) -> String {
@@ -170,7 +171,7 @@ impl<'a> EndpointsApi<'a> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: "/endpoints".to_owned(),
-                headers: self.session(),
+                headers: self.session()?,
                 query: Vec::new(),
                 body: Some(
                     serde_json::to_value(input).map_err(|e| crate::Error::Decode(e.to_string()))?,
@@ -194,7 +195,7 @@ impl<'a> EndpointsApi<'a> {
             .send(Call {
                 method: reqwest::Method::PATCH,
                 path: Self::path(id, ""),
-                headers: self.session(),
+                headers: self.session()?,
                 query: Vec::new(),
                 body: Some(
                     serde_json::to_value(patch).map_err(|e| crate::Error::Decode(e.to_string()))?,
@@ -209,7 +210,7 @@ impl<'a> EndpointsApi<'a> {
             .send(Call {
                 method: reqwest::Method::DELETE,
                 path: Self::path(id, ""),
-                headers: self.session(),
+                headers: self.session()?,
                 query: Vec::new(),
                 body: None,
                 retry: false,
@@ -243,7 +244,7 @@ impl<'a> EndpointsApi<'a> {
             .send(Call {
                 method: reqwest::Method::GET,
                 path: path.to_owned(),
-                headers: self.session(),
+                headers: self.session()?,
                 query,
                 body: None,
                 retry: true,

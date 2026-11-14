@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::credentials::Auth;
 use crate::error::Result;
 use crate::http::{Call, Http, RawCall};
 
@@ -90,17 +91,16 @@ pub struct BrowserProfile {
 /// Manages browser sessions with the signed-in person's session.
 pub struct BrowserApi<'a> {
     http: &'a Http,
-    headers: Vec<(&'static str, String)>,
+    auth: Auth<'a>,
 }
 
 impl<'a> BrowserApi<'a> {
-    /// `tenant` is sent as the `tenant_id` header when given. A browser key names its workspace, so it needs none.
-    pub(crate) fn new(http: &'a Http, token: &str, tenant: Option<&str>) -> Self {
-        let mut headers = vec![("authorization", format!("Bearer {token}"))];
-        if let Some(tenant) = tenant {
-            headers.push(("tenant_id", tenant.to_owned()));
-        }
-        Self { http, headers }
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
+        Self { http, auth }
+    }
+
+    fn headers(&self) -> Result<Vec<(&'static str, String)>> {
+        self.auth.headers()
     }
 
     pub fn sessions(&self) -> BrowserSessionsApi<'_> {
@@ -118,7 +118,7 @@ impl<'a> BrowserApi<'a> {
         self.http
             .send_raw(RawCall {
                 path: "/profiles/import".to_owned(),
-                headers: self.headers.clone(),
+                headers: self.headers()?,
                 query: vec![("name", name.to_owned())],
                 body: archive,
                 content_type: "application/gzip",
@@ -131,7 +131,7 @@ impl<'a> BrowserApi<'a> {
             .send(Call {
                 method: reqwest::Method::DELETE,
                 path: format!("/profiles/{}", crate::client::encode(id)),
-                headers: self.headers.clone(),
+                headers: self.headers()?,
                 query: Vec::new(),
                 body: None,
                 retry: false,
@@ -149,7 +149,7 @@ impl<'a> BrowserApi<'a> {
             .send(Call {
                 method: reqwest::Method::GET,
                 path: path.to_owned(),
-                headers: self.headers.clone(),
+                headers: self.headers()?,
                 query: Vec::new(),
                 body: None,
                 retry: true,
@@ -173,7 +173,7 @@ impl BrowserSessionsApi<'_> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: "/sessions".to_owned(),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: Vec::new(),
                 body: Some(body),
                 retry: false,
@@ -201,7 +201,7 @@ impl BrowserSessionsApi<'_> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: format!("/sessions/{}/profile", crate::client::encode(id)),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: Vec::new(),
                 body: Some(serde_json::json!({ "name": name })),
                 retry: false,
@@ -216,7 +216,7 @@ impl BrowserSessionsApi<'_> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: format!("/sessions/{}/stop", crate::client::encode(id)),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: Vec::new(),
                 body: None,
                 retry: false,
@@ -232,7 +232,7 @@ impl BrowserSessionsApi<'_> {
             .send(Call {
                 method: reqwest::Method::GET,
                 path: format!("/sessions/{}/page", crate::client::encode(id)),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: screenshot_query(screenshot),
                 body: None,
                 retry: true,
@@ -254,7 +254,7 @@ impl BrowserSessionsApi<'_> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: format!("/sessions/{}/page/actions", crate::client::encode(id)),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: screenshot_query(screenshot),
                 body: Some(body),
                 retry: false,
@@ -271,7 +271,7 @@ impl BrowserSessionsApi<'_> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: format!("/sessions/{}/agent-runs", crate::client::encode(id)),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: Vec::new(),
                 body: Some(body),
                 retry: false,
@@ -299,7 +299,7 @@ impl BrowserSessionsApi<'_> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: format!("/sessions/{}/step-runs", crate::client::encode(id)),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: Vec::new(),
                 body: Some(body),
                 retry: false,
@@ -333,7 +333,7 @@ impl BrowserSessionsApi<'_> {
                     crate::client::encode(id),
                     crate::client::encode(run_id)
                 ),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: Vec::new(),
                 body,
                 retry: false,
@@ -385,7 +385,7 @@ impl BrowserSessionsApi<'_> {
                     crate::client::encode(id),
                     crate::client::encode(run_id)
                 ),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: vec![("name", name.to_owned())],
                 body: file,
                 content_type: "application/octet-stream",
@@ -440,7 +440,7 @@ impl BrowserSessionsApi<'_> {
                     crate::client::encode(id),
                     crate::client::encode(run_id)
                 ),
-                headers: self.api.headers.clone(),
+                headers: self.api.headers()?,
                 query: Vec::new(),
                 body: None,
                 retry: false,

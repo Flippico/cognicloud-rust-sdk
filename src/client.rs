@@ -6,12 +6,13 @@ use serde::Serialize;
 
 use crate::agents::{AgentsApi, RunsApi, SkillsApi};
 use crate::browser::BrowserApi;
+use crate::credentials::Credentials;
 use crate::database::DatabaseApi;
 use crate::embeddings::{EmbeddingsRequest, EmbeddingsResult};
 use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
-use crate::keys::parse_key;
+use crate::keys::{read_product, require_kind, KeyKind};
 use crate::mail::MailApi;
 use crate::marketplace::MarketplaceApi;
 use crate::responses::{ResponseResult, ResponsesRequest};
@@ -89,7 +90,7 @@ fn http(options: &Options) -> Result<Http> {
     })
 }
 
-/// How an invoke URL names its tenant: the tenant's name as UTF-8, in lowercase hex.
+/// How an invoke URL names its workspace: its name as UTF-8, in lowercase hex.
 pub fn encode_tenant(tenant: &str) -> String {
     tenant.bytes().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -106,43 +107,63 @@ pub(crate) fn encode(segment: &str) -> String {
         .collect()
 }
 
-/// Calls one AI Gateway endpoint with an account key or an AI Gateway key, as the endpoint's owner.
+fn gateway_credentials(account_key: &str, gateway_key: &str) -> Result<Credentials> {
+    require_kind(&read_product(gateway_key)?, KeyKind::Gateway)?;
+    Credentials::resolve(account_key, [gateway_key])
+}
+
+/// Calls one AI Gateway endpoint with an account key and an AI Gateway key, as the endpoint's owner.
 pub struct EndpointClient {
     url: String,
-    credential: String,
+    credentials: Credentials,
     http: Http,
 }
 
 impl EndpointClient {
-    /// A client for the endpoint `endpoint_id` in the key's workspace, with the default [`Options`].
-    pub fn new(endpoint_id: impl Into<String>, api_key: impl Into<String>) -> Result<Self> {
-        Self::with_options(endpoint_id, api_key, &Options::default())
+    /// A client for the endpoint `endpoint_id` in the workspace of the keys, with the default [`Options`].
+    pub fn new(
+        endpoint_id: impl Into<String>,
+        account_key: impl Into<String>,
+        gateway_key: impl Into<String>,
+    ) -> Result<Self> {
+        Self::with_options(endpoint_id, account_key, gateway_key, &Options::default())
     }
 
-    /// A client for the endpoint `endpoint_id` in the key's workspace, with the given options.
+    /// A client for the endpoint `endpoint_id` in the workspace of the keys, with the given options.
     pub fn with_options(
         endpoint_id: impl Into<String>,
-        api_key: impl Into<String>,
+        account_key: impl Into<String>,
+        gateway_key: impl Into<String>,
         options: &Options,
     ) -> Result<Self> {
-        let credential = api_key.into();
-        let tenant_hex = parse_key(&credential)?.tenant_hex;
+        let account_key: String = account_key.into();
+        let gateway_key: String = gateway_key.into();
+        let credentials = gateway_credentials(&account_key, &gateway_key)?;
         let base = options.base_url.trim_end_matches('/');
-        let url = format!("{base}/invoke/{tenant_hex}/{}", encode(&endpoint_id.into()));
+        let url = format!(
+            "{base}/invoke/{}/{}",
+            credentials.workspace(),
+            encode(&endpoint_id.into())
+        );
         Ok(Self {
             url,
-            credential,
+            credentials,
             http: http(options)?,
         })
     }
 
     /// A client for an invoke URL as CogniCloud issued it (the endpoint's `url`).
-    pub fn from_url(url: impl Into<String>, api_key: impl Into<String>) -> Result<Self> {
-        let credential = api_key.into();
-        parse_key(&credential)?;
+    pub fn from_url(
+        url: impl Into<String>,
+        account_key: impl Into<String>,
+        gateway_key: impl Into<String>,
+    ) -> Result<Self> {
+        let account_key: String = account_key.into();
+        let gateway_key: String = gateway_key.into();
+        let credentials = gateway_credentials(&account_key, &gateway_key)?;
         Ok(Self {
             url: url.into(),
-            credential,
+            credentials,
             http: http(&Options::default())?,
         })
     }
@@ -150,6 +171,10 @@ impl EndpointClient {
     /// The address every invoke is sent to.
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    fn gateway_headers(&self) -> Result<Vec<(&'static str, String)>> {
+        self.credentials.auth(Some(KeyKind::Gateway)).headers()
     }
 
     /// Sends the body through the endpoint's request mapping. Choose the response type: [`InvokeResponse`] is
@@ -174,7 +199,7 @@ impl EndpointClient {
             .send(Call {
                 method: reqwest::Method::POST,
                 path,
-                headers: vec![("authorization", format!("Bearer {}", self.credential))],
+                headers: self.gateway_headers()?,
                 query: Vec::new(),
                 body: Some(body),
                 retry: false,
@@ -201,7 +226,7 @@ impl EndpointClient {
             .open(Call {
                 method: reqwest::Method::POST,
                 path: self.url.clone(),
-                headers: vec![("authorization", format!("Bearer {}", self.credential))],
+                headers: self.gateway_headers()?,
                 query: Vec::new(),
                 body: Some(body),
                 retry: false,
@@ -235,7 +260,7 @@ impl fmt::Debug for EndpointClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EndpointClient")
             .field("url", &self.url)
-            .field("credential", &"Secret(****)")
+            .field("credentials", &self.credentials)
             .finish()
     }
 }
@@ -243,24 +268,39 @@ impl fmt::Debug for EndpointClient {
 /// Builds a [`Client`].
 #[derive(Default)]
 pub struct ClientBuilder {
-    api_key: Option<String>,
+    account_key: Option<String>,
+    product_keys: Vec<String>,
     options: Options,
 }
 
 impl fmt::Debug for ClientBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ClientBuilder")
-            .field("api_key", &self.api_key.as_ref().map(|_| "Secret(****)"))
+            .field(
+                "account_key",
+                &self.account_key.as_ref().map(|_| "Secret(****)"),
+            )
+            .field(
+                "product_keys",
+                &vec!["Secret(****)"; self.product_keys.len()],
+            )
             .field("options", &self.options)
             .finish()
     }
 }
 
 impl ClientBuilder {
-    /// An account key (`cc_acc_`) for every product, or a product key (`cc_gw_`, `cc_db_`, `cc_br_`, `cc_ml_`,
-    /// `cc_ag_`) for one, from Settings → API keys. It names its workspace. Required.
-    pub fn api_key(mut self, api_key: impl Into<String>) -> Self {
-        self.api_key = Some(api_key.into());
+    /// The account key (`cc_acc_`) from Settings → API keys. Required. It names the workspace and goes with every
+    /// product key.
+    pub fn account_key(mut self, account_key: impl Into<String>) -> Self {
+        self.account_key = Some(account_key.into());
+        self
+    }
+
+    /// A product key: `cc_gw_` AI Gateway, `cc_db_` Database, `cc_br_` Browser, `cc_ml_` Mail or `cc_ag_` Agents. It
+    /// must be from the account key's workspace. A second key for the same product replaces the first.
+    pub fn product_key(mut self, product_key: impl Into<String>) -> Self {
+        self.product_keys.push(product_key.into());
         self
     }
 
@@ -315,8 +355,10 @@ impl ClientBuilder {
     }
 
     pub fn build(self) -> Result<Client> {
-        let token = self.api_key.unwrap_or_default();
-        parse_key(&token)?;
+        let credentials = Credentials::resolve(
+            self.account_key.as_deref().unwrap_or(""),
+            self.product_keys.iter().map(String::as_str),
+        )?;
         let service = |base_url: &str| -> Result<Http> {
             let mut client = http(&self.options)?;
             client.base_url = base_url.to_owned();
@@ -331,14 +373,14 @@ impl ClientBuilder {
             marketplace: service(&self.options.marketplace_base_url)?,
             http: http(&self.options)?,
             options: self.options,
-            token,
+            credentials,
         })
     }
 }
 
-/// Every CogniCloud product with one API key.
+/// Every CogniCloud product, with an account key and a product key for each one you call.
 pub struct Client {
-    token: String,
+    credentials: Credentials,
     options: Options,
     http: Http,
     browser: Http,
@@ -354,54 +396,70 @@ impl Client {
         ClientBuilder::default()
     }
 
+    /// AI Gateway endpoint management. Needs the AI Gateway product key.
     pub fn endpoints(&self) -> EndpointsApi<'_> {
-        EndpointsApi::new(&self.http, &self.token)
+        EndpointsApi::new(&self.http, self.credentials.auth(Some(KeyKind::Gateway)))
     }
 
-    /// Calls one AI Gateway endpoint with this key, as its owner.
+    /// Calls one AI Gateway endpoint as its owner. Needs the AI Gateway product key.
     pub fn endpoint(&self, endpoint_id: impl Into<String>) -> Result<EndpointClient> {
-        EndpointClient::with_options(endpoint_id, self.token.clone(), &self.options)
+        let gateway_key = self.credentials.product(KeyKind::Gateway)?;
+        EndpointClient::with_options(
+            endpoint_id,
+            self.credentials.account(),
+            gateway_key,
+            &self.options,
+        )
     }
 
+    /// Browser sessions. Needs the Browser product key.
     pub fn browser(&self) -> BrowserApi<'_> {
-        BrowserApi::new(&self.browser, &self.token, None)
+        BrowserApi::new(&self.browser, self.credentials.auth(Some(KeyKind::Browser)))
     }
 
+    /// Mailboxes. Needs the Mail product key.
     pub fn mail(&self) -> MailApi<'_> {
-        MailApi::new(&self.mail, &self.token)
+        MailApi::new(&self.mail, self.credentials.auth(Some(KeyKind::Mail)))
     }
 
+    /// Hosted databases. Needs the Database product key.
     pub fn database(&self) -> DatabaseApi<'_> {
-        DatabaseApi::new(&self.database, &self.token)
+        DatabaseApi::new(
+            &self.database,
+            self.credentials.auth(Some(KeyKind::Database)),
+        )
     }
 
+    /// Web builder. Sends the account key alone; it has no product key yet.
     pub fn web_builder(&self) -> WebBuilderApi<'_> {
-        WebBuilderApi::new(&self.web_builder, &self.token)
+        WebBuilderApi::new(&self.web_builder, self.credentials.auth(None))
     }
 
-    /// Agents and their action log. A key narrowed to one agent gets `403 forbidden` on the list.
+    /// Agents. Needs the Agents product key.
     pub fn agents(&self) -> AgentsApi<'_> {
-        AgentsApi::new(&self.agents, &self.token, None)
+        AgentsApi::new(&self.agents, self.credentials.auth(Some(KeyKind::Agents)))
     }
 
+    /// Skills. Needs the Agents product key.
     pub fn skills(&self) -> SkillsApi<'_> {
-        SkillsApi::new(&self.agents, &self.token, None)
+        SkillsApi::new(&self.agents, self.credentials.auth(Some(KeyKind::Agents)))
     }
 
-    /// Runs of agents. A key narrowed to one agent reaches only that agent's runs.
+    /// Runs of agents. Needs the Agents product key.
     pub fn runs(&self) -> RunsApi<'_> {
-        RunsApi::new(&self.agents, &self.token, None)
+        RunsApi::new(&self.agents, self.credentials.auth(Some(KeyKind::Agents)))
     }
 
+    /// Agent templates. Sends the account key alone; it has no product key yet.
     pub fn marketplace(&self) -> MarketplaceApi<'_> {
-        MarketplaceApi::new(&self.marketplace, &self.token, None)
+        MarketplaceApi::new(&self.marketplace, self.credentials.auth(None))
     }
 }
 
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client")
-            .field("api_key", &"Secret(****)")
+            .field("credentials", &self.credentials)
             .finish()
     }
 }

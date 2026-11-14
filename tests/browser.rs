@@ -1,14 +1,12 @@
+mod common;
 use cognicloud_sdk::{
     BrowserPageAction, BrowserStatus, Client, CreateBrowserSession, CreateStepRun, Error, RunStep,
     StartAgentRun,
 };
+use common::*;
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-const KEY: &str =
-    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 fn session() -> serde_json::Value {
     json!({
@@ -29,7 +27,7 @@ fn session() -> serde_json::Value {
 
 async fn client(server: &MockServer) -> Client {
     Client::builder()
-        .api_key(KEY)
+        .with_keys()
         .browser_base_url(format!("{}/v1/browser", server.uri()))
         .build()
         .unwrap()
@@ -40,7 +38,8 @@ async fn starts_lists_reads_and_stops_sessions_at_the_browser_base() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/browser/sessions"))
-        .and(header("authorization", BEARER))
+        .and(header("authorization", bearer(BROWSER)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(body_json(json!({ "timeoutMinutes": 15 })))
         .respond_with(ResponseTemplate::new(201).set_body_json(session()))
         .expect(1)
@@ -246,25 +245,19 @@ async fn a_session_takes_a_window_size_and_returns_it() {
 }
 
 #[tokio::test]
-async fn a_browser_key_sends_no_tenant_and_a_blank_key_is_refused() {
-    for key in ["", "   "] {
-        let error = Client::builder().api_key(key).build().unwrap_err();
-        assert_eq!(error.code(), "missing_key");
-    }
-
+async fn a_browser_call_sends_the_browser_key_and_the_account_key_without_a_tenant() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/browser/profiles"))
-        .and(header(
-            "authorization",
-            "Bearer cc_br_6163_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        ))
+        .and(header("authorization", bearer(BROWSER)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
         .expect(1)
         .mount(&server)
         .await;
     let client = Client::builder()
-        .api_key("cc_br_6163_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        .account_key(ACCOUNT)
+        .product_key(BROWSER)
         .browser_base_url(format!("{}/v1/browser", server.uri()))
         .build()
         .unwrap();
@@ -272,7 +265,7 @@ async fn a_browser_key_sends_no_tenant_and_a_blank_key_is_refused() {
     let received = server.received_requests().await.unwrap();
     assert!(
         received[0].headers.get("tenant_id").is_none(),
-        "a key names its workspace"
+        "the keys name the workspace"
     );
 }
 
@@ -283,6 +276,8 @@ async fn uploads_a_profile_archive_as_the_raw_body() {
         .and(path("/v1/browser/profiles/import"))
         .and(wiremock::matchers::query_param("name", "Shop account"))
         .and(header("content-type", "application/gzip"))
+        .and(header("authorization", bearer(BROWSER)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(wiremock::matchers::body_bytes(vec![31u8, 139, 8]))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "id": "5f1c9a2e", "name": "Shop account", "sizeBytes": 3,

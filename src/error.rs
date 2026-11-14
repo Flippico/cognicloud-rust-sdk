@@ -27,8 +27,8 @@ pub enum Error {
     /// An environment variable the caller read was missing or not Unicode.
     #[error(transparent)]
     Env(#[from] std::env::VarError),
-    /// The API key is missing, retired or not a CogniCloud key: `code` is `missing_key`, `retired_key` or
-    /// `invalid_key`.
+    /// A key is missing, retired, of the wrong kind or from another workspace. `code` is `missing_key`,
+    /// `missing_account_key`, `missing_product_key`, `retired_key`, `invalid_key` or `key_mismatch`.
     #[error("{message}")]
     Key { code: &'static str, message: String },
     /// CogniCloud's answer did not have the expected shape.

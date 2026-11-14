@@ -1,11 +1,9 @@
+mod common;
 use cognicloud_sdk::{Client, MailboxListOptions};
+use common::*;
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-const KEY: &str =
-    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 fn mailbox() -> serde_json::Value {
     json!({
@@ -20,7 +18,7 @@ fn mailbox() -> serde_json::Value {
 
 async fn client(server: &MockServer) -> Client {
     Client::builder()
-        .api_key(KEY)
+        .with_keys()
         .mail_base_url(format!("{}/v1/mail", server.uri()))
         .build()
         .unwrap()
@@ -31,7 +29,8 @@ async fn creates_a_mailbox_and_returns_its_password_once() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/mail/mailboxes"))
-        .and(header("authorization", BEARER))
+        .and(header("authorization", bearer(MAIL)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(body_json(json!({ "localPart": "support" })))
         .respond_with(
             ResponseTemplate::new(201)

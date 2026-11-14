@@ -1,14 +1,14 @@
 # cognicloud-rust-sdk
 
-Call CogniCloud AI Gateway endpoints and manage them from async Rust on Tokio. Same behaviour as [`@cognicloud/sdk`](https://github.com/Flippico/cognicloud-js-sdk).
+Call CogniCloud AI Gateway endpoints and manage them from async Rust on Tokio. Same behaviour as [`@cognicloud/sdk`](https://github.com/Flippico/cognicloud-js-sdk), except that a missing product key is reported by the call that needs it, not when the API object is created.
 
-> Version 1.0.0. One API key replaces the session token, the `tenant` option and the per-product keys; see [Migrating from 0.x](#migrating-from-0x) and [CHANGELOG.md](./CHANGELOG.md).
+> Version 2.0.0. Every call to a product takes an account key together with that product's key; see [API keys](#api-keys), [Migrating from 1.x](#migrating-from-1x) and [CHANGELOG.md](./CHANGELOG.md).
 
 ## Install
 
 ```toml
 [dependencies]
-cognicloud-sdk = "1"
+cognicloud-sdk = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde_json = "1"
 ```
@@ -17,20 +17,39 @@ Built on `reqwest` with `rustls`. Every request and response is a typed `serde` 
 
 ## API keys
 
-Create a key in the dashboard under **Settings → API keys**. It is shown once.
+Create the keys in the dashboard under **Settings → API keys**. Each is shown once.
 
-- An **account key** (`cc_acc_...`) reaches every product of the workspace and acts as the person who created it.
-- A **product key** reaches one product: `cc_gw_` AI Gateway, `cc_db_` Database, `cc_br_` Browser, `cc_ml_` Mail, `cc_ag_` Agents. It can be narrowed to one resource, such as one endpoint, database or agent.
+- An **account key** (`cc_acc_...`) names the workspace and acts as the person who created it. Every client needs one.
+- A **product key** reaches one product: `cc_gw_` AI Gateway, `cc_db_` Database, `cc_br_` Browser, `cc_ml_` Mail, `cc_ag_` Agents. It can be narrowed to one resource, such as one endpoint, database or agent. Add one for each product you call.
 
-The key names its workspace, so there is no `tenant` option and no `tenant_id` header. Keys cannot be created through the SDK or the API.
+Every call to a product sends both keys: the product key as the Bearer token and the account key in the `x-cognicloud-account-key` header. The servers refuse each key on its own: an account key alone gets `403`, a product key alone gets `401`.
+
+The web builder and the marketplace have no product key yet, so they send the account key alone as the Bearer token. This is an exception, and it may change.
+
+The keys name the workspace, so there is no `tenant` option and no `tenant_id` header. Keys cannot be created through the SDK or the API.
 
 ```rust
 use cognicloud_sdk::Client;
 
-let client = Client::builder().api_key(std::env::var("COGNICLOUD_API_KEY")?).build()?;
+let client = Client::builder()
+    .account_key(std::env::var("COGNICLOUD_ACCOUNT_KEY")?)
+    .product_key(std::env::var("COGNICLOUD_GATEWAY_KEY")?)
+    .build()?;
 ```
 
-A missing or blank key fails with `Error::Key` and code `missing_key` when the client is built. A key in a retired format (`cgb_`, `cgd_`, `cga_`, `ccag_`, `cgm_`, `cgv_`, `cc_live_`) fails with `retired_key`, and anything else, such as a session token, with `invalid_key`. `parse_key(key)` reads a key's kind and workspace without a request.
+`build()` checks the keys and fails with `Error::Key`:
+
+| Code | When |
+| --- | --- |
+| `missing_account_key` | No account key, or a blank one. |
+| `invalid_key` | The account key is not an account key, a product key is an account key, or the text is not a CogniCloud key. |
+| `retired_key` | A key in a retired format (`cgb_`, `cgd_`, `cga_`, `ccag_`, `cgm_`, `cgv_`, `cc_live_`). |
+| `missing_key` | A blank product key. |
+| `key_mismatch` | A product key is from another workspace than the account key. |
+
+A product you call without its product key fails with `missing_product_key` at the call, before any request is sent. The message names the product and says where to add the key.
+
+A second product key for the same product replaces the first. `parse_key(key)` reads a key's kind and workspace without a request.
 
 ## Call an endpoint
 
@@ -40,7 +59,10 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), cognicloud_sdk::Error> {
-    let client = Client::builder().api_key(std::env::var("COGNICLOUD_API_KEY")?).build()?;
+    let client = Client::builder()
+        .account_key(std::env::var("COGNICLOUD_ACCOUNT_KEY")?)
+        .product_key(std::env::var("COGNICLOUD_GATEWAY_KEY")?)
+        .build()?;
     let endpoint = client.endpoint(std::env::var("COGNICLOUD_ENDPOINT_ID")?)?;
 
     let answer: InvokeResponse = endpoint.invoke(&json!({ "input": "Summarise this ticket in one sentence." })).await?;
@@ -51,7 +73,7 @@ async fn main() -> Result<(), cognicloud_sdk::Error> {
 
 `invoke` is generic: use [`InvokeResponse`] for the shape every model returns, or deserialise into your own struct. It is never retried, because a retried call can be billed twice.
 
-The call acts as the endpoint's owner, with an account key or an AI Gateway key; a key narrowed to one endpoint reaches only that one. `EndpointClient::new(endpoint_id, api_key)` and `EndpointClient::from_url(url, api_key)` make the same client without a `Client`.
+The call acts as the endpoint's owner, with the account key and an AI Gateway key; a gateway key narrowed to one endpoint reaches only that one. `EndpointClient::new(endpoint_id, account_key, gateway_key)` and `EndpointClient::from_url(url, account_key, gateway_key)` make the same client without a `Client`. Both keys are required and must be from one workspace; the invoke URL's workspace comes from the account key.
 
 ## Send a PDF or an image
 
@@ -59,7 +81,11 @@ The call acts as the endpoint's owner, with an account key or an AI Gateway key;
 use cognicloud_sdk::{EndpointClient, pdf_part, text_part};
 use serde_json::json;
 
-let endpoint = EndpointClient::from_url(std::env::var("COGNICLOUD_ENDPOINT_URL")?, std::env::var("COGNICLOUD_API_KEY")?)?;
+let endpoint = EndpointClient::from_url(
+    std::env::var("COGNICLOUD_ENDPOINT_URL")?,
+    std::env::var("COGNICLOUD_ACCOUNT_KEY")?,
+    std::env::var("COGNICLOUD_GATEWAY_KEY")?,
+)?;
 let cv = std::fs::read("cv.pdf")?;
 
 let answer: serde_json::Value = endpoint
@@ -71,12 +97,16 @@ Files go up to 10 MB. The gateway reserves a quarter of a file's size in tokens 
 
 ## Manage endpoints
 
-With an account key or an AI Gateway key:
+With the account key and an AI Gateway key:
 
 ```rust
 use cognicloud_sdk::{Client, CreateEndpoint, DailyUsageRange, Locale, UpdateEndpoint};
 
-let client = Client::builder().api_key(api_key).locale(Locale::En).build()?;
+let client = Client::builder()
+    .account_key(account_key)
+    .product_key(gateway_key)
+    .locale(Locale::En)
+    .build()?;
 
 let created = client
     .endpoints()
@@ -106,12 +136,15 @@ Secrets are wrapped in `Secret<T>`: their `Debug` output is `Secret(****)`, and 
 
 ## Browser sessions
 
-Browser calls take an account key or a browser key (`cc_br_`):
+Browser calls need the account key and a browser key (`cc_br_`):
 
 ```rust
 use cognicloud_sdk::{Client, CreateBrowserSession};
 
-let browser = Client::builder().api_key(std::env::var("COGNICLOUD_BROWSER_KEY")?).build()?;
+let browser = Client::builder()
+    .account_key(std::env::var("COGNICLOUD_ACCOUNT_KEY")?)
+    .product_key(std::env::var("COGNICLOUD_BROWSER_KEY")?)
+    .build()?;
 let session = browser.browser().sessions().create(&CreateBrowserSession { timeout_minutes: Some(15), ..Default::default() }).await?;
 ```
 
@@ -129,7 +162,10 @@ A browser session is a Chrome that your agent drives over the Chrome DevTools Pr
 use cognicloud_sdk::{Client, CreateBrowserSession};
 use futures::StreamExt;
 
-let client = Client::builder().api_key(api_key).build()?;
+let client = Client::builder()
+    .account_key(account_key)
+    .product_key(browser_key)
+    .build()?;
 let session = client
     .browser()
     .sessions()
@@ -182,9 +218,14 @@ let after = sessions.run_step(&session.id, &stored.id, &RunStep {
 
 ## Mail
 
-Mailboxes on the Flippico mail server, with an account key or a mail key (`cc_ml_`). The password is returned once; store it.
+Mailboxes on the Flippico mail server, with the account key and a mail key (`cc_ml_`). The password is returned once; store it.
 
 ```rust
+let client = Client::builder()
+    .account_key(account_key)
+    .product_key(mail_key)
+    .build()?;
+
 let created = client.mail().create("support").await?;
 let settings = client.mail().connection_settings().await?; // IMAP and SMTP hosts, and default_domain
 
@@ -198,13 +239,16 @@ client.mail().create_on("ceo", "yourcompany.com").await?;
 
 ## Database
 
-Hosted Postgres. An account key or a database key (`cc_db_`) for every database creates and lists databases. `database().data(...)` queries one: with a database key narrowed to one database pass `None`; with an account key, name the database, `data(Some(&database.id))` (sent as `x-database-id`).
+Hosted Postgres. Creating and listing databases needs the account key and a database key (`cc_db_`). `database().data(...)` queries one: with a database key narrowed to one database pass `None`; with a database key for the whole workspace, name the database with `data(Some(&database.id))`, which is sent as `x-database-id`.
 
 ```rust
 use cognicloud_sdk::{Client, Statement};
 use serde_json::json;
 
-let cc = Client::builder().api_key(api_key).build()?;
+let cc = Client::builder()
+    .account_key(account_key)
+    .product_key(database_key)
+    .build()?;
 let database = cc.database().create("Orders").await?;
 let db = cc.database().data(Some(&database.id));
 
@@ -242,7 +286,7 @@ db.query("INSERT INTO members (id, user_id) VALUES ($1, $2)", &[json!(id), json!
 
 ## Web builder
 
-Build a React application and host it at `https://<subdomain>.cognicloud.dev`. Leave out `repo_url` to start from a Vite + React starter. Each person can have 3 applications.
+Build a React application and host it at `https://<subdomain>.cognicloud.dev`. Leave out `repo_url` to start from a Vite + React starter. Each person can have 3 applications. The web builder takes the account key alone for now (see [API keys](#api-keys)).
 
 ```rust
 use cognicloud_sdk::CreateApplication;
@@ -284,10 +328,15 @@ api.disable_auto_deploy(&app.id).await?;
 
 ## Agents
 
-An agent answers through one of your AI Gateway endpoints, with its instructions and skills. Create one, then run it.
+An agent answers through one of your AI Gateway endpoints, with its instructions and skills. Agents calls need the account key and an Agents key (`cc_ag_`). Create one, then run it.
 
 ```rust
-use cognicloud_sdk::{CreateAgent, CreateSkill};
+use cognicloud_sdk::{Client, CreateAgent, CreateSkill};
+
+let cc = Client::builder()
+    .account_key(account_key)
+    .product_key(agents_key)
+    .build()?;
 
 let skill = cc.skills().create(&CreateSkill {
     name: "Cite".to_owned(),
@@ -341,14 +390,19 @@ let page = cc.runs().list(&agent_id, RunListOptions { limit: Some(20), cursor: N
 - Starting fails with `agent_paused` (409), `endpoint_missing` (422) or `limit_reached` (429, at most 3 running at once). It is never retried.
 - In this release every tool answers "not available yet"; the run calls do not change when tools arrive.
 
-An Agents key (`cc_ag_`) narrowed to one agent replaces the old agent credential: it reaches only that agent and its runs; other calls answer `403 forbidden`.
+An Agents key (`cc_ag_`) narrowed to one agent reaches only that agent and its runs, with the account key as for every product call; other calls answer `403 forbidden`.
 
 ```rust
-let agent = Client::builder().api_key(std::env::var("COGNICLOUD_AGENT_KEY")?).build()?;
+let agent = Client::builder()
+    .account_key(std::env::var("COGNICLOUD_ACCOUNT_KEY")?)
+    .product_key(std::env::var("COGNICLOUD_AGENT_KEY")?)
+    .build()?;
 let run = agent.runs().start(&agent_id, "Go").await?;
 ```
 
 ### Marketplace
+
+The marketplace takes the account key alone for now (see [API keys](#api-keys)).
 
 ```rust
 let templates = cc.marketplace().list_templates(Some("research")).await?;
@@ -437,7 +491,7 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 }
 ```
 
-`status()` is the HTTP status (`0` when no answer came back). `code()` is CogniCloud's stable error code, or a local one such as `timeout` or `network_error`.
+`status()` is the HTTP status (`0` when no answer came back). `code()` is CogniCloud's stable error code, or a local one such as `timeout` or `network_error`. The key codes are in [API keys](#api-keys).
 
 ## Configuration
 
@@ -454,7 +508,24 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 | `agents_base_url` | `https://cognicloud.dev/api/v1/agents` | Agents service: agents, skills and runs. |
 | `marketplace_base_url` | `https://cognicloud.dev/api/v1/marketplace` | Agent templates. |
 
-Set them on the builder, next to the required `api_key`, or with `Options` for `EndpointClient::with_options`.
+Set them on the builder, next to the required `account_key`, or with `Options` for `EndpointClient::with_options`.
+
+## Migrating from 1.x
+
+| 1.x | 2.0 |
+| --- | --- |
+| `Client::builder().api_key(account_key)` | `Client::builder().account_key(account_key).product_key(gateway_key)`, with one product key for each product you call |
+| `Client::builder().api_key(database_key)` (`cc_db_`) | `.account_key(account_key).product_key(database_key)`: the account key is now required |
+| `Client::builder().api_key(browser_key)` (`cc_br_`) | `.account_key(account_key).product_key(browser_key)` |
+| `Client::builder().api_key(mail_key)` (`cc_ml_`) | `.account_key(account_key).product_key(mail_key)` |
+| `Client::builder().api_key(agents_key)` (`cc_ag_`) | `.account_key(account_key).product_key(agents_key)` |
+| `EndpointClient::new(id, api_key)` | `EndpointClient::new(id, account_key, gateway_key)` |
+| `EndpointClient::from_url(url, api_key)` | `EndpointClient::from_url(url, account_key, gateway_key)` |
+| `EndpointClient::with_options(id, api_key, options)` | `EndpointClient::with_options(id, account_key, gateway_key, options)` |
+| `client.endpoint(id)?` | Unchanged. The client needs an AI Gateway product key, or the call fails with `missing_product_key`. |
+| `Client::builder().api_key(key)` for the web builder or marketplace | `Client::builder().account_key(account_key)`: the account key alone |
+
+Create the account key and every product key before you upgrade. A key that does not pair with the account key fails at `build()` (`key_mismatch`), and a product call without its product key fails with `missing_product_key`.
 
 ## Migrating from 0.x
 
@@ -467,7 +538,7 @@ Set them on the builder, next to the required `api_key`, or with `Options` for `
 | `.token("ccag_...")` | `.api_key("cc_ag_...")` narrowed to the agent |
 | `endpoints().rotate_credential`, `database().keys`, `agents().keys()` | Settings → API keys in the dashboard |
 
-The old keys keep working on the services for two weeks after the new keys launch, then stop. SDK 1.0 refuses them at once with `retired_key`, so create the new keys before you upgrade.
+The 0.x keys were retired in 1.0 and are refused with `retired_key`. The 1.0 column is what those versions used; see the table above for 2.0.
 
 ## Development
 

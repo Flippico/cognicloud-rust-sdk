@@ -1,15 +1,15 @@
+mod common;
 use cognicloud_sdk::{Error, StreamEvent};
+use common::*;
 use serde_json::json;
-use wiremock::matchers::{body_json, method, path};
+use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-const KEY: &str =
-    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 async fn endpoint(server: &MockServer) -> cognicloud_sdk::EndpointClient {
     cognicloud_sdk::EndpointClient::with_options(
         "e1",
-        KEY,
+        ACCOUNT,
+        GATEWAY,
         &cognicloud_sdk::Options {
             base_url: server.uri(),
             ..Default::default()
@@ -29,6 +29,8 @@ async fn yields_deltas_in_order_then_the_done_answer_and_sends_stream_true() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/invoke/636f676e69636c6f7564/e1"))
+        .and(header("authorization", bearer(GATEWAY)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(body_json(json!({"messages": [{"role": "user", "content": "hi"}], "stream": true})))
         .respond_with(sse(&format!(
             "event: delta\ndata: {{\"text\":\"Hel\"}}\n\nevent: delta\r\ndata: {{\"text\":\"lo\"}}\r\n\r\nevent: done\ndata: {DONE}\n\n"
@@ -63,6 +65,8 @@ async fn a_provider_error_event_is_yielded_and_ends_the_stream() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/invoke/636f676e69636c6f7564/e1"))
+        .and(header("authorization", bearer(GATEWAY)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .respond_with(sse("event: delta\ndata: {\"text\":\"Hi\"}\n\nevent: error\ndata: {\"code\":\"upstream_failure\",\"message\":\"The provider did not finish the answer.\"}\n\n"))
         .mount(&server)
         .await;
@@ -88,6 +92,8 @@ async fn a_stream_that_closes_early_reports_stream_ended() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/invoke/636f676e69636c6f7564/e1"))
+        .and(header("authorization", bearer(GATEWAY)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .respond_with(sse("event: delta\ndata: {\"text\":\"Hi\"}\n\n"))
         .mount(&server)
         .await;
@@ -110,6 +116,8 @@ async fn a_refused_stream_is_an_api_error_before_any_event() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/invoke/636f676e69636c6f7564/e1"))
+        .and(header("authorization", bearer(GATEWAY)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .respond_with(ResponseTemplate::new(422).set_body_json(json!({"error": "invalid_request", "message": "Streaming needs an API version of 2024-10-21 or later."})))
         .mount(&server)
         .await;

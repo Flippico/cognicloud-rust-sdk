@@ -2,6 +2,24 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - Unreleased
+
+### Breaking
+- An account key and a product key work in a pair. Every call to a product sends the product key as the Bearer token and the account key in the `x-cognicloud-account-key` header. An account key alone is refused (403), and a product key alone is refused (401).
+- `Client::builder().api_key(key)` is removed. Use `.account_key(key)`, which is required, and `.product_key(key)` for each product you call. A second key for the same product replaces the first.
+- `EndpointClient::new`, `with_options` and `from_url` take the account key and the AI Gateway key: `(endpoint_id, account_key, gateway_key)` and `(url, account_key, gateway_key)`. Both must be from one workspace, and the invoke URL's workspace comes from the account key. `client.endpoint(id)` uses the client's keys.
+- Database data calls send the database key as the Bearer token, with the account key header. `data(None)` is still limited to one database for a key narrowed to one database, and `data(Some(id))` still sends `x-database-id`.
+- Exception: the web builder and the marketplace have no product key yet, so they send the account key alone as the Bearer token. This may change when they get one.
+- New error codes from `build()` and the endpoint constructors: `missing_account_key`, `key_mismatch`, and `missing_product_key`, which a product call returns before any request. `invalid_key` also covers an account key given as a product key and a product key given as the account key. `missing_key`, `retired_key` and `invalid_key` keep their meaning for each key they check.
+- Needs the services built on `cognicloud-common-lib` 0.10.0, which check the account key header on every product call.
+
+### Added
+- `ClientBuilder::account_key` and `ClientBuilder::product_key`. Keys from the vault (`cc_vt_`) are accepted, though no product uses them yet.
+- README: the pair rule, the key error codes, a "Migrating from 1.x" table, and every example uses the new builder.
+
+### Changed
+- `Debug` output of `Client`, `ClientBuilder`, `EndpointClient` and the keys hides every key as `Secret(****)`.
+
 ## [1.0.0] - Unreleased
 
 ### Breaking

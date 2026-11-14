@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::credentials::Auth;
 use crate::error::Result;
 use crate::http::{Call, Http};
 
@@ -109,13 +110,12 @@ struct AddDomain<'a> {
 /// Creates, lists and removes mailboxes on the Flippico mail server.
 pub struct MailApi<'a> {
     http: &'a Http,
-    headers: Vec<(&'static str, String)>,
+    auth: Auth<'a>,
 }
 
 impl<'a> MailApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &str) -> Self {
-        let headers = vec![("authorization", format!("Bearer {token}"))];
-        Self { http, headers }
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
+        Self { http, auth }
     }
 
     /// Newest first.
@@ -131,7 +131,7 @@ impl<'a> MailApi<'a> {
             .send(Call {
                 method: reqwest::Method::GET,
                 path: "/mailboxes".to_owned(),
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query,
                 body: None,
                 retry: true,
@@ -158,7 +158,7 @@ impl<'a> MailApi<'a> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: "/mailboxes".to_owned(),
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query: Vec::new(),
                 body: Some(
                     serde_json::to_value(CreateMailbox { local_part, domain }).unwrap_or_default(),
@@ -172,7 +172,7 @@ impl<'a> MailApi<'a> {
     pub fn domains(&self) -> MailDomainsApi<'_> {
         MailDomainsApi {
             http: self.http,
-            headers: self.headers.clone(),
+            auth: self.auth,
         }
     }
 
@@ -181,7 +181,7 @@ impl<'a> MailApi<'a> {
             .send(Call {
                 method: reqwest::Method::GET,
                 path: format!("/mailboxes/{}", encode(id)),
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query: Vec::new(),
                 body: None,
                 retry: true,
@@ -195,7 +195,7 @@ impl<'a> MailApi<'a> {
             .send(Call {
                 method: reqwest::Method::DELETE,
                 path: format!("/mailboxes/{}", encode(id)),
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query: Vec::new(),
                 body: None,
                 retry: false,
@@ -209,7 +209,7 @@ impl<'a> MailApi<'a> {
             .send(Call {
                 method: reqwest::Method::POST,
                 path: format!("/mailboxes/{}/password/rotate", encode(id)),
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query: Vec::new(),
                 body: None,
                 retry: false,
@@ -223,7 +223,7 @@ impl<'a> MailApi<'a> {
             .send(Call {
                 method: reqwest::Method::GET,
                 path: "/mailboxes/settings".to_owned(),
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query: Vec::new(),
                 body: None,
                 retry: true,
@@ -232,11 +232,11 @@ impl<'a> MailApi<'a> {
     }
 }
 
-/// Your own domains for mailboxes. Adding, verifying and deleting need a signed-in person's token; an API key can
-/// list them and create mailboxes on verified ones.
+/// Your own domains for mailboxes. Adding, verifying and deleting need a signed-in person's session; with the account
+/// and mail keys you can list them and create mailboxes on verified ones.
 pub struct MailDomainsApi<'a> {
     http: &'a Http,
-    headers: Vec<(&'static str, String)>,
+    auth: Auth<'a>,
 }
 
 impl MailDomainsApi<'_> {
@@ -251,7 +251,7 @@ impl MailDomainsApi<'_> {
             .send(Call {
                 method,
                 path,
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query: Vec::new(),
                 body,
                 retry,

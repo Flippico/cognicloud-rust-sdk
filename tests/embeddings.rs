@@ -1,16 +1,15 @@
+mod common;
 use cognicloud_sdk::{EmbeddingsRequest, Error};
+use common::*;
 use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const KEY: &str =
-    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-
 async fn endpoint(server: &MockServer) -> cognicloud_sdk::EndpointClient {
     cognicloud_sdk::EndpointClient::with_options(
         "e1",
-        KEY,
+        ACCOUNT,
+        GATEWAY,
         &cognicloud_sdk::Options {
             base_url: server.uri(),
             ..Default::default()
@@ -24,7 +23,8 @@ async fn sends_the_inputs_and_returns_vectors_in_input_order() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/invoke/636f676e69636c6f7564/e1/embeddings"))
-        .and(header("authorization", BEARER))
+        .and(header("authorization", bearer(GATEWAY)))
+        .and(header(ACCOUNT_HEADER, ACCOUNT))
         .and(body_json(
             json!({"input": ["first", "second"], "dimensions": 256}),
         ))

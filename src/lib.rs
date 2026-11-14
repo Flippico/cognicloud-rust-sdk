@@ -1,12 +1,13 @@
 //! CogniCloud SDK: call AI Gateway endpoints and manage them.
 //!
-//! One API key from Settings → API keys signs every call: an account key for every product, or a product key for one.
-//! This version covers AI Gateway endpoints, browser sessions, mail, databases, the web builder, agents, their runs
-//! and the marketplace.
+//! Every call to a product sends a product key and the account key from Settings → API keys together. The web builder
+//! and the marketplace take the account key alone for now. This version covers AI Gateway endpoints, browser sessions,
+//! mail, databases, the web builder, agents, their runs and the marketplace.
 
 mod agents;
 mod browser;
 mod client;
+mod credentials;
 mod database;
 mod embeddings;
 mod endpoints;

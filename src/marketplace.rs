@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 use crate::agents::{ActionLogList, ActionLogListOptions, Service};
 use crate::client::encode;
+use crate::credentials::Auth;
 use crate::error::Result;
 use crate::http::Http;
 
@@ -47,9 +48,9 @@ pub struct MarketplaceApi<'a> {
 }
 
 impl<'a> MarketplaceApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &str, tenant: Option<&str>) -> Self {
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
         Self {
-            service: Service::new(http, token, tenant),
+            service: Service::new(http, auth),
         }
     }
 

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::encode;
+use crate::credentials::Auth;
 use crate::error::Result;
 use crate::http::{Call, Http};
 
@@ -125,13 +126,12 @@ struct BuildLogs {
 /// Builds React applications and hosts them on their own subdomain.
 pub struct WebBuilderApi<'a> {
     http: &'a Http,
-    headers: Vec<(&'static str, String)>,
+    auth: Auth<'a>,
 }
 
 impl<'a> WebBuilderApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &str) -> Self {
-        let headers = vec![("authorization", format!("Bearer {token}"))];
-        Self { http, headers }
+    pub(crate) fn new(http: &'a Http, auth: Auth<'a>) -> Self {
+        Self { http, auth }
     }
 
     async fn call<T: serde::de::DeserializeOwned>(
@@ -145,7 +145,7 @@ impl<'a> WebBuilderApi<'a> {
             .send(Call {
                 method,
                 path,
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query: Vec::new(),
                 body,
                 retry,
@@ -305,7 +305,7 @@ impl<'a> WebBuilderApi<'a> {
             .send(Call {
                 method: reqwest::Method::GET,
                 path: "/actions".to_owned(),
-                headers: self.headers.clone(),
+                headers: self.auth.headers()?,
                 query,
                 body: None,
                 retry: true,
