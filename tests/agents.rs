@@ -8,6 +8,10 @@ use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+const KEY: &str =
+    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 const AGENT: &str = "4f0b7a52-2c1d-4c8e-9a0e-0d1c2b3a4f5e";
 const RUN: &str = "9a8b7c6d-1e2f-4a3b-8c9d-0e1f2a3b4c5d";
 const SKILL: &str = "11111111-2222-4333-8444-555555555555";
@@ -74,8 +78,7 @@ fn run(status: &str) -> serde_json::Value {
 
 fn client(server: &MockServer) -> Client {
     Client::builder()
-        .token("amadeus-token")
-        .tenant("acme")
+        .api_key(KEY)
         .agents_base_url(format!("{}/v1/agents", server.uri()))
         .build()
         .unwrap()
@@ -86,8 +89,7 @@ async fn creates_an_agent_with_the_session_and_tenant() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/agents/agents"))
-        .and(header("authorization", "Bearer amadeus-token"))
-        .and(header("tenant_id", "acme"))
+        .and(header("authorization", BEARER))
         .and(body_json(json!({
             "name": "Researcher",
             "endpointId": "e1",
@@ -292,25 +294,8 @@ async fn manages_skills_and_reads_their_versions() {
 }
 
 #[tokio::test]
-async fn lists_and_revokes_keys_and_pages_actions() {
+async fn pages_actions() {
     let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/v1/agents/keys"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([{
-            "id": "k1",
-            "name": "ci",
-            "prefix": "cga_6163",
-            "createdAt": "2026-11-03T10:00:00Z",
-            "lastUsedAt": null
-        }])))
-        .mount(&server)
-        .await;
-    Mock::given(method("DELETE"))
-        .and(path("/v1/agents/keys/k1"))
-        .respond_with(ResponseTemplate::new(204))
-        .expect(1)
-        .mount(&server)
-        .await;
     Mock::given(method("GET"))
         .and(path("/v1/agents/actions"))
         .and(query_param("limit", "1"))
@@ -333,8 +318,6 @@ async fn lists_and_revokes_keys_and_pages_actions() {
 
     let client = client(&server);
     let api = client.agents();
-    assert_eq!(api.keys().list().await.unwrap()[0].prefix, "cga_6163");
-    api.keys().revoke("k1").await.unwrap();
     let page = api
         .actions(ActionLogListOptions {
             limit: Some(1),
@@ -545,11 +528,11 @@ fn an_unknown_agent_status_is_never_sent() {
 }
 
 #[tokio::test]
-async fn an_agent_credential_runs_its_agent_without_a_tenant() {
+async fn an_agent_key_runs_its_agent_without_a_tenant() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path(format!("/v1/agents/agents/{AGENT}/runs")))
-        .and(header("authorization", "Bearer ccag_6163_abc"))
+        .and(header("authorization", "Bearer cc_ag_636f676e69636c6f7564_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"))
         .respond_with(ResponseTemplate::new(202).set_body_json(run("running")))
         .expect(1)
         .mount(&server)
@@ -558,13 +541,13 @@ async fn an_agent_credential_runs_its_agent_without_a_tenant() {
         .and(path("/v1/agents/agents"))
         .respond_with(ResponseTemplate::new(403).set_body_json(json!({
             "error": "forbidden",
-            "message": "An agent credential reaches only its agent's runs."
+            "message": "This key reaches one agent."
         })))
         .mount(&server)
         .await;
 
     let client = Client::builder()
-        .token("ccag_6163_abc")
+        .api_key("cc_ag_636f676e69636c6f7564_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
         .agents_base_url(format!("{}/v1/agents", server.uri()))
         .build()
         .unwrap();
@@ -577,23 +560,11 @@ async fn an_agent_credential_runs_its_agent_without_a_tenant() {
         .all(|request| request.headers.get("tenant_id").is_none()));
 }
 
-#[tokio::test]
-async fn a_key_with_an_explicit_tenant_still_sends_it() {
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/v1/agents/skills"))
-        .and(header("authorization", "Bearer cga_6163_abc"))
-        .and(header("tenant_id", "acme"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-        .expect(1)
-        .mount(&server)
-        .await;
-
-    let client = Client::builder()
-        .token("cga_6163_abc")
-        .tenant("acme")
-        .agents_base_url(format!("{}/v1/agents", server.uri()))
+#[test]
+fn a_retired_agent_credential_is_refused() {
+    let error = Client::builder()
+        .api_key("ccag_6163_abc")
         .build()
-        .unwrap();
-    assert!(client.skills().list().await.unwrap().is_empty());
+        .unwrap_err();
+    assert_eq!(error.code(), "retired_key");
 }

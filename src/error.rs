@@ -27,6 +27,10 @@ pub enum Error {
     /// An environment variable the caller read was missing or not Unicode.
     #[error(transparent)]
     Env(#[from] std::env::VarError),
+    /// The API key is missing, retired or not a CogniCloud key: `code` is `missing_key`, `retired_key` or
+    /// `invalid_key`.
+    #[error("{message}")]
+    Key { code: &'static str, message: String },
     /// CogniCloud's answer did not have the expected shape.
     #[error("unexpected response: {0}")]
     Decode(String),
@@ -53,6 +57,7 @@ impl Error {
             Error::FileTooLarge => "file_too_large",
             Error::Env(_) => "env",
             Error::Decode(_) => "decode",
+            Error::Key { code, .. } => code,
         }
     }
 

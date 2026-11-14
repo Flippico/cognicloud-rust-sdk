@@ -1,8 +1,15 @@
-use cognicloud_sdk::{Client, DatabaseActionListOptions, DatabaseClient, Error, Statement};
+use cognicloud_sdk::{Client, DatabaseActionListOptions, Error, Statement};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+const KEY: &str =
+    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const DB_KEY: &str =
+    "cc_db_636f676e69636c6f7564_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+const DB_BEARER: &str = "Bearer cc_db_636f676e69636c6f7564_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
 fn result() -> Value {
     json!({
@@ -13,14 +20,19 @@ fn result() -> Value {
     })
 }
 
-fn db(server: &MockServer) -> DatabaseClient {
-    DatabaseClient::with_base_url("cgd_key", format!("{}/v1/database", server.uri())).unwrap()
+fn db_client(server: &MockServer) -> Client {
+    Client::builder()
+        .api_key(DB_KEY)
+        .database_base_url(format!("{}/v1/database", server.uri()))
+        .max_retries(0)
+        .build()
+        .unwrap()
 }
 
 async fn answer(server: &MockServer, verb: &str, route: &str, expected: Value) {
     Mock::given(method(verb))
         .and(path(format!("/v1/database{route}")))
-        .and(header("authorization", "Bearer cgd_key"))
+        .and(header("authorization", DB_BEARER))
         .and(body_json(expected))
         .respond_with(ResponseTemplate::new(200).set_body_json(result()))
         .expect(1)
@@ -30,7 +42,9 @@ async fn answer(server: &MockServer, verb: &str, route: &str, expected: Value) {
 
 #[test]
 fn refuses_a_missing_key() {
-    assert!(matches!(DatabaseClient::new(" "), Err(Error::Config(_))));
+    let error = Client::builder().api_key(" ").build().unwrap_err();
+    assert_eq!(error.code(), "missing_key");
+    assert!(matches!(error, Error::Key { .. }));
 }
 
 #[tokio::test]
@@ -48,7 +62,9 @@ async fn runs_sql_with_the_key_and_no_tenant() {
     struct Row {
         id: i32,
     }
-    let result = db(&server)
+    let result = db_client(&server)
+        .database()
+        .data(None)
         .query("SELECT id FROM orders WHERE status = $1", &[json!("paid")])
         .await
         .unwrap();
@@ -72,7 +88,9 @@ async fn does_not_repeat_a_query_because_it_may_change_data() {
         .expect(1)
         .mount(&server)
         .await;
-    let error = db(&server)
+    let error = db_client(&server)
+        .database()
+        .data(None)
         .query("DELETE FROM orders", &[])
         .await
         .unwrap_err();
@@ -89,7 +107,12 @@ async fn reports_the_postgres_code_of_a_failed_statement() {
         ))
         .mount(&server)
         .await;
-    let error = db(&server).query("INSERT", &[]).await.unwrap_err();
+    let error = db_client(&server)
+        .database()
+        .data(None)
+        .query("INSERT", &[])
+        .await
+        .unwrap_err();
     assert_eq!(error.status(), 400);
     assert_eq!(error.code(), "query_failed");
     assert_eq!(error.query_code(), Some("23505"));
@@ -107,7 +130,12 @@ async fn other_errors_have_no_query_code() {
         )
         .mount(&server)
         .await;
-    let error = db(&server).tables().await.unwrap_err();
+    let error = db_client(&server)
+        .database()
+        .data(None)
+        .tables()
+        .await
+        .unwrap_err();
     assert_eq!(error.code(), "unauthorized");
     assert_eq!(error.query_code(), None);
 }
@@ -126,7 +154,9 @@ async fn sends_a_transaction() {
         )
         .mount(&server)
         .await;
-    let results = db(&server)
+    let results = db_client(&server)
+        .database()
+        .data(None)
         .transaction(&[
             Statement::new("UPDATE a SET b = 1", vec![]),
             Statement::new("DELETE FROM a WHERE id = $1", vec![json!(2)]),
@@ -146,7 +176,12 @@ async fn lists_tables() {
         ] })))
         .mount(&server)
         .await;
-    let tables = db(&server).tables().await.unwrap();
+    let tables = db_client(&server)
+        .database()
+        .data(None)
+        .tables()
+        .await
+        .unwrap();
     assert_eq!(tables[0].name, "orders");
     assert!(!tables[0].columns[0].nullable);
 }
@@ -178,7 +213,9 @@ async fn builds_a_select_with_every_filter() {
         }),
     )
     .await;
-    db(&server)
+    db_client(&server)
+        .database()
+        .data(None)
         .table("order items")
         .select(&["id", "email"])
         .eq("a", 1)
@@ -210,7 +247,9 @@ async fn selects_every_column_by_default() {
         json!({ "columns": [], "filters": [], "order": [] }),
     )
     .await;
-    db(&server)
+    db_client(&server)
+        .database()
+        .data(None)
         .table("orders")
         .select(&[])
         .execute()
@@ -244,7 +283,8 @@ async fn inserts_updates_and_deletes() {
     )
     .await;
 
-    let db = db(&server);
+    let client = db_client(&server);
+    let db = client.database().data(None);
     let orders = db.table("orders");
     orders
         .insert(&[json!({ "email": "a" }), json!({ "email": "b" })])
@@ -262,8 +302,7 @@ async fn inserts_updates_and_deletes() {
 
 async fn person(server: &MockServer) -> Client {
     Client::builder()
-        .token("session")
-        .tenant("acme")
+        .api_key(KEY)
         .database_base_url(format!("{}/v1/database", server.uri()))
         .build()
         .unwrap()
@@ -275,8 +314,7 @@ async fn manages_databases_as_the_signed_in_person() {
     let database = json!({ "id": "db1", "name": "Orders", "createdAt": "2026-10-30T10:00:00Z" });
     Mock::given(method("POST"))
         .and(path("/v1/database/databases"))
-        .and(header("authorization", "Bearer session"))
-        .and(header("tenant_id", "acme"))
+        .and(header("authorization", BEARER))
         .and(body_json(json!({ "name": "Orders" })))
         .respond_with(ResponseTemplate::new(201).set_body_json(&database))
         .mount(&server)
@@ -307,22 +345,8 @@ async fn manages_databases_as_the_signed_in_person() {
 }
 
 #[tokio::test]
-async fn lists_and_revokes_keys_and_pages_through_actions() {
+async fn pages_through_actions() {
     let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/v1/database/databases/db1/keys"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([{
-            "id": "key1", "databaseId": "db1", "name": "Agent", "access": "read",
-            "prefix": "cgd_1234", "createdAt": "2026-10-30T10:00:00Z", "lastUsedAt": null
-        }])))
-        .mount(&server)
-        .await;
-    Mock::given(method("DELETE"))
-        .and(path("/v1/database/databases/db1/keys/key1"))
-        .respond_with(ResponseTemplate::new(204))
-        .expect(1)
-        .mount(&server)
-        .await;
     Mock::given(method("GET"))
         .and(path("/v1/database/actions"))
         .and(query_param("limit", "5"))
@@ -340,8 +364,6 @@ async fn lists_and_revokes_keys_and_pages_through_actions() {
 
     let client = person(&server).await;
     let databases = client.database();
-    assert_eq!(databases.keys("db1").await.unwrap()[0].access, "read");
-    databases.revoke_key("db1", "key1").await.unwrap();
     let page = databases
         .actions(DatabaseActionListOptions {
             limit: Some(5),
@@ -359,8 +381,7 @@ async fn runs_sql_and_lists_tables_as_the_owner() {
     let value = "a078e7865b1073c4d2c1eaa92a9b5507";
     Mock::given(method("POST"))
         .and(path("/v1/database/databases/db1/query"))
-        .and(header("authorization", "Bearer session"))
-        .and(header("tenant_id", "acme"))
+        .and(header("authorization", BEARER))
         .and(body_json(
             json!({ "sql": "SELECT id FROM orders WHERE id = $1", "params": [value] }),
         ))
@@ -406,4 +427,24 @@ async fn does_not_repeat_an_owner_query() {
         .await
         .unwrap_err();
     assert_eq!(error.status(), 503);
+}
+
+#[tokio::test]
+async fn an_account_key_names_the_database() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/database/query"))
+        .and(header("authorization", BEARER))
+        .and(header("x-database-id", "db1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(result()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = person(&server).await;
+    client
+        .database()
+        .data(Some("db1"))
+        .query("SELECT 1", &[])
+        .await
+        .unwrap();
 }

@@ -3,10 +3,14 @@ use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+const KEY: &str =
+    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 async fn endpoint(server: &MockServer) -> cognicloud_sdk::EndpointClient {
     cognicloud_sdk::EndpointClient::with_options(
         "e1",
-        "cc_live_secret",
+        KEY,
         &cognicloud_sdk::Options {
             base_url: server.uri(),
             ..Default::default()
@@ -20,7 +24,7 @@ async fn sends_mcp_tools_and_returns_the_response_id_and_output_items() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/invoke/636f676e69636c6f7564/e1"))
-        .and(header("authorization", "Bearer cc_live_secret"))
+        .and(header("authorization", BEARER))
         .and(body_json(json!({
             "input": "Check this invoice.",
             "instructions": "Be brief.",

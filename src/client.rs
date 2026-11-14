@@ -6,11 +6,12 @@ use serde::Serialize;
 
 use crate::agents::{AgentsApi, RunsApi, SkillsApi};
 use crate::browser::BrowserApi;
-use crate::database::{self, DatabaseApi, DatabaseTable, QueryResult, Statement, TableApi};
+use crate::database::DatabaseApi;
 use crate::embeddings::{EmbeddingsRequest, EmbeddingsResult};
 use crate::endpoints::EndpointsApi;
 use crate::error::{Error, Result};
 use crate::http::{Call, Http};
+use crate::keys::parse_key;
 use crate::mail::MailApi;
 use crate::marketplace::MarketplaceApi;
 use crate::responses::{ResponseResult, ResponsesRequest};
@@ -39,8 +40,6 @@ impl Locale {
 pub struct Options {
     /// Default `https://cognicloud.dev/api/v1/ai-gateway`.
     pub base_url: String,
-    /// The tenant (workspace) to manage, and the tenant that owns an endpoint called by ID. Default `"cognicloud"`.
-    pub tenant: String,
     pub locale: Locale,
     /// Per request. Default 30 seconds.
     pub timeout: Duration,
@@ -64,7 +63,6 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             base_url: "https://cognicloud.dev/api/v1/ai-gateway".to_owned(),
-            tenant: "cognicloud".to_owned(),
             locale: Locale::En,
             timeout: Duration::from_secs(30),
             max_retries: 2,
@@ -108,7 +106,7 @@ pub(crate) fn encode(segment: &str) -> String {
         .collect()
 }
 
-/// Calls one AI Gateway endpoint with its own credential.
+/// Calls one AI Gateway endpoint with an account key or an AI Gateway key, as the endpoint's owner.
 pub struct EndpointClient {
     url: String,
     credential: String,
@@ -116,38 +114,37 @@ pub struct EndpointClient {
 }
 
 impl EndpointClient {
-    /// A client for the endpoint `endpoint_id` in the default tenant, with the default [`Options`].
-    pub fn new(endpoint_id: impl Into<String>, credential: impl Into<String>) -> Self {
-        Self::with_options(endpoint_id, credential, &Options::default())
-            .expect("the default HTTP client always builds")
+    /// A client for the endpoint `endpoint_id` in the key's workspace, with the default [`Options`].
+    pub fn new(endpoint_id: impl Into<String>, api_key: impl Into<String>) -> Result<Self> {
+        Self::with_options(endpoint_id, api_key, &Options::default())
     }
 
-    /// A client for the endpoint `endpoint_id`, with the given options.
+    /// A client for the endpoint `endpoint_id` in the key's workspace, with the given options.
     pub fn with_options(
         endpoint_id: impl Into<String>,
-        credential: impl Into<String>,
+        api_key: impl Into<String>,
         options: &Options,
     ) -> Result<Self> {
+        let credential = api_key.into();
+        let tenant_hex = parse_key(&credential)?.tenant_hex;
         let base = options.base_url.trim_end_matches('/');
-        let url = format!(
-            "{base}/invoke/{}/{}",
-            encode_tenant(&options.tenant),
-            encode(&endpoint_id.into())
-        );
+        let url = format!("{base}/invoke/{tenant_hex}/{}", encode(&endpoint_id.into()));
         Ok(Self {
             url,
-            credential: credential.into(),
+            credential,
             http: http(options)?,
         })
     }
 
     /// A client for an invoke URL as CogniCloud issued it (the endpoint's `url`).
-    pub fn from_url(url: impl Into<String>, credential: impl Into<String>) -> Self {
-        Self {
+    pub fn from_url(url: impl Into<String>, api_key: impl Into<String>) -> Result<Self> {
+        let credential = api_key.into();
+        parse_key(&credential)?;
+        Ok(Self {
             url: url.into(),
-            credential: credential.into(),
-            http: http(&Options::default()).expect("the default HTTP client always builds"),
-        }
+            credential,
+            http: http(&Options::default())?,
+        })
     }
 
     /// The address every invoke is sent to.
@@ -246,25 +243,24 @@ impl fmt::Debug for EndpointClient {
 /// Builds a [`Client`].
 #[derive(Default)]
 pub struct ClientBuilder {
-    token: Option<String>,
+    api_key: Option<String>,
     options: Options,
-    tenant_set: bool,
 }
 
 impl fmt::Debug for ClientBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ClientBuilder")
-            .field("token", &self.token.as_ref().map(|_| "Secret(****)"))
+            .field("api_key", &self.api_key.as_ref().map(|_| "Secret(****)"))
             .field("options", &self.options)
-            .field("tenant_set", &self.tenant_set)
             .finish()
     }
 }
 
 impl ClientBuilder {
-    /// The signed-in person's Amadeus session token, sent as `Authorization: Bearer`. Required.
-    pub fn token(mut self, token: impl Into<String>) -> Self {
-        self.token = Some(token.into());
+    /// An account key (`cc_acc_`) for every product, or a product key (`cc_gw_`, `cc_db_`, `cc_br_`, `cc_ml_`,
+    /// `cc_ag_`) for one, from Settings → API keys. It names its workspace. Required.
+    pub fn api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = Some(api_key.into());
         self
     }
 
@@ -275,14 +271,6 @@ impl ClientBuilder {
 
     pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
         self.options.base_url = base_url.into();
-        self
-    }
-
-    /// The tenant (workspace) to manage, sent as the `tenant_id` header. Default `"cognicloud"`. A `cga_` key or
-    /// `ccag_` credential names its workspace, so without this no tenant goes to the agents service or marketplace.
-    pub fn tenant(mut self, tenant: impl Into<String>) -> Self {
-        self.options.tenant = tenant.into();
-        self.tenant_set = true;
         self
     }
 
@@ -327,49 +315,31 @@ impl ClientBuilder {
     }
 
     pub fn build(self) -> Result<Client> {
-        let token = self
-            .token
-            .filter(|token| !token.trim().is_empty())
-            .ok_or_else(|| {
-                Error::Config(
-                    "a token is required: pass the signed-in person's token, or a browser key for browser calls".to_owned(),
-                )
-            })?;
-        let mut browser = http(&self.options)?;
-        browser.base_url = self.options.browser_base_url.clone();
-        let mut mail = http(&self.options)?;
-        mail.base_url = self.options.mail_base_url.clone();
-        let mut database = http(&self.options)?;
-        database.base_url = self.options.database_base_url.clone();
-        let mut web_builder = http(&self.options)?;
-        web_builder.base_url = self.options.web_builder_base_url.clone();
-        let mut agents = http(&self.options)?;
-        agents.base_url = self.options.agents_base_url.clone();
-        let mut marketplace = http(&self.options)?;
-        marketplace.base_url = self.options.marketplace_base_url.clone();
-        let names_workspace = token.starts_with("ccag_") || token.starts_with("cga_");
-        let agents_tenant =
-            (self.tenant_set || !names_workspace).then(|| self.options.tenant.clone());
+        let token = self.api_key.unwrap_or_default();
+        parse_key(&token)?;
+        let service = |base_url: &str| -> Result<Http> {
+            let mut client = http(&self.options)?;
+            client.base_url = base_url.to_owned();
+            Ok(client)
+        };
         Ok(Client {
-            token,
-            tenant: self.options.tenant.clone(),
-            agents_tenant,
+            browser: service(&self.options.browser_base_url)?,
+            mail: service(&self.options.mail_base_url)?,
+            database: service(&self.options.database_base_url)?,
+            web_builder: service(&self.options.web_builder_base_url)?,
+            agents: service(&self.options.agents_base_url)?,
+            marketplace: service(&self.options.marketplace_base_url)?,
             http: http(&self.options)?,
-            browser,
-            mail,
-            database,
-            web_builder,
-            agents,
-            marketplace,
+            options: self.options,
+            token,
         })
     }
 }
 
-/// Manages CogniCloud resources: AI Gateway endpoints and browser sessions.
+/// Every CogniCloud product with one API key.
 pub struct Client {
     token: String,
-    tenant: String,
-    agents_tenant: Option<String>,
+    options: Options,
     http: Http,
     browser: Http,
     mail: Http,
@@ -379,152 +349,59 @@ pub struct Client {
     marketplace: Http,
 }
 
-/// The browser product alone. The key is a browser key from the dashboard (Browser → API keys). It names its
-/// workspace, so no tenant is sent and no Amadeus token is needed.
-pub struct BrowserClient {
-    key: String,
-    browser: Http,
-}
-
-impl BrowserClient {
-    pub fn new(key: impl Into<String>) -> Result<Self> {
-        let options = Options::default();
-        Self::with_base_url(key, options.browser_base_url)
-    }
-
-    /// For another environment, or a test server.
-    pub fn with_base_url(
-        key: impl Into<String>,
-        browser_base_url: impl Into<String>,
-    ) -> Result<Self> {
-        let key = key.into();
-        if key.trim().is_empty() {
-            return Err(Error::Config(
-                "a browser key is required: create one in the dashboard under Browser → API keys"
-                    .to_owned(),
-            ));
-        }
-        let mut browser = http(&Options::default())?;
-        browser.base_url = browser_base_url.into();
-        Ok(Self { key, browser })
-    }
-
-    pub fn browser(&self) -> BrowserApi<'_> {
-        BrowserApi::new(&self.browser, &self.key, None)
-    }
-}
-
-/// Queries one database. The key is a database key from the dashboard (Database → API keys). It names its database
-/// and workspace, so no tenant is sent and no Amadeus token is needed.
-pub struct DatabaseClient {
-    key: String,
-    database: Http,
-}
-
-impl DatabaseClient {
-    pub fn new(key: impl Into<String>) -> Result<Self> {
-        Self::with_base_url(key, Options::default().database_base_url)
-    }
-
-    /// For another environment, or a test server.
-    pub fn with_base_url(
-        key: impl Into<String>,
-        database_base_url: impl Into<String>,
-    ) -> Result<Self> {
-        let key = key.into();
-        if key.trim().is_empty() {
-            return Err(Error::Config(
-                "a database key is required: create one in the dashboard under Database → API keys"
-                    .to_owned(),
-            ));
-        }
-        let mut database = http(&Options::default())?;
-        database.base_url = database_base_url.into();
-        Ok(Self { key, database })
-    }
-
-    /// Runs one SQL statement, with `$1`, `$2` for `params`. It stops after 15 seconds and returns at most 1,000 rows
-    /// and 5 MB. Never retried, because it may change data.
-    pub async fn query(&self, sql: &str, params: &[serde_json::Value]) -> Result<QueryResult> {
-        database::query(&self.database, &self.key, sql, params).await
-    }
-
-    /// Runs 1 to 20 statements that commit together, or none do. Needs a write key. Never retried.
-    pub async fn transaction(&self, statements: &[Statement]) -> Result<Vec<QueryResult>> {
-        database::transaction(&self.database, &self.key, statements).await
-    }
-
-    /// Tables and views in the `public` schema that this key can read.
-    pub async fn tables(&self) -> Result<Vec<DatabaseTable>> {
-        database::tables(&self.database, &self.key).await
-    }
-
-    pub fn table(&self, name: &str) -> TableApi<'_> {
-        database::table(&self.database, &self.key, name)
-    }
-}
-
-impl fmt::Debug for DatabaseClient {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DatabaseClient")
-            .field("key", &"Secret(****)")
-            .finish()
-    }
-}
-
 impl Client {
     pub fn builder() -> ClientBuilder {
         ClientBuilder::default()
     }
 
     pub fn endpoints(&self) -> EndpointsApi<'_> {
-        EndpointsApi::new(&self.http, &self.token, &self.tenant)
+        EndpointsApi::new(&self.http, &self.token)
+    }
+
+    /// Calls one AI Gateway endpoint with this key, as its owner.
+    pub fn endpoint(&self, endpoint_id: impl Into<String>) -> Result<EndpointClient> {
+        EndpointClient::with_options(endpoint_id, self.token.clone(), &self.options)
     }
 
     pub fn browser(&self) -> BrowserApi<'_> {
-        BrowserApi::new(&self.browser, &self.token, Some(&self.tenant))
+        BrowserApi::new(&self.browser, &self.token, None)
     }
 
     pub fn mail(&self) -> MailApi<'_> {
-        MailApi::new(&self.mail, &self.token, &self.tenant)
+        MailApi::new(&self.mail, &self.token)
     }
 
     pub fn database(&self) -> DatabaseApi<'_> {
-        DatabaseApi::new(&self.database, &self.token, &self.tenant)
+        DatabaseApi::new(&self.database, &self.token)
     }
 
     pub fn web_builder(&self) -> WebBuilderApi<'_> {
-        WebBuilderApi::new(&self.web_builder, &self.token, &self.tenant)
+        WebBuilderApi::new(&self.web_builder, &self.token)
     }
 
-    /// Agents, their keys and action log. A `ccag_` credential gets `403 forbidden` here.
+    /// Agents and their action log. A key narrowed to one agent gets `403 forbidden` on the list.
     pub fn agents(&self) -> AgentsApi<'_> {
-        AgentsApi::new(&self.agents, &self.token, self.agents_tenant.as_deref())
+        AgentsApi::new(&self.agents, &self.token, None)
     }
 
     pub fn skills(&self) -> SkillsApi<'_> {
-        SkillsApi::new(&self.agents, &self.token, self.agents_tenant.as_deref())
+        SkillsApi::new(&self.agents, &self.token, None)
     }
 
-    /// Runs of agents. A client built with an agent's `ccag_` credential reaches only that agent's runs.
+    /// Runs of agents. A key narrowed to one agent reaches only that agent's runs.
     pub fn runs(&self) -> RunsApi<'_> {
-        RunsApi::new(&self.agents, &self.token, self.agents_tenant.as_deref())
+        RunsApi::new(&self.agents, &self.token, None)
     }
 
     pub fn marketplace(&self) -> MarketplaceApi<'_> {
-        MarketplaceApi::new(
-            &self.marketplace,
-            &self.token,
-            self.agents_tenant.as_deref(),
-        )
+        MarketplaceApi::new(&self.marketplace, &self.token, None)
     }
 }
 
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client")
-            .field("tenant", &self.tenant)
-            .field("token", &"Secret(****)")
+            .field("api_key", &"Secret(****)")
             .finish()
     }
 }

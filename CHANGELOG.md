@@ -2,6 +2,20 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - Unreleased
+
+### Breaking
+- One API key signs every call. `Client::builder().api_key(key)` takes an account key (`cc_acc_`) for every product or a product key (`cc_gw_`, `cc_db_`, `cc_br_`, `cc_ml_`, `cc_ag_`) for one, created in the dashboard under Settings → API keys. The key names its workspace: `token`, `tenant`, `Options::tenant` and the `tenant_id` header are gone.
+- `EndpointClient::new`, `with_options` and `from_url` take the API key instead of the endpoint credential and return `Result`; the workspace in the invoke URL comes from the key. `client.endpoint(id)` makes one from a client.
+- Removed: `BrowserClient` and `DatabaseClient` (use `Client` with a browser or database key), `endpoints().rotate_credential` and `RotatedCredential`, `database().keys`, `revoke_key` and `DatabaseKey`, `agents().keys()`, `AgentKeysApi` and `AgentKey`. Keys are managed in the dashboard.
+- A missing, retired (`cgb_`, `cgd_`, `cga_`, `ccag_`, `cgm_`, `cgv_`, `cc_live_`) or malformed key fails with the new `Error::Key` and code `missing_key`, `retired_key` or `invalid_key`.
+
+### Added
+- `database().data(database_id)` returns `DatabaseData` for SQL and the query builder: `None` with a database key narrowed to one database, `Some(id)` with an account key (sent as `x-database-id`).
+- `parse_key`, `ParsedKey` and `KeyKind` read a key without a request.
+- README: API keys and a "Migrating from 0.x" table.
+- Needs core 0.14.0, ai-gateway 0.10.0, agents 0.18.0, browser 0.13.0, database 0.5.0 and mail 0.11.0.
+
 ## [0.24.0] - Unreleased
 
 ### Added

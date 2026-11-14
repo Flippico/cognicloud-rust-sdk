@@ -84,11 +84,6 @@ pub struct CreatedEndpoint {
     pub credential: Credential,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RotatedCredential {
-    pub secret: Secret<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EndpointUsage {
@@ -155,23 +150,15 @@ struct DailyUsageList {
 pub struct EndpointsApi<'a> {
     http: &'a Http,
     token: &'a str,
-    tenant: &'a str,
 }
 
 impl<'a> EndpointsApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &'a str, tenant: &'a str) -> Self {
-        Self {
-            http,
-            token,
-            tenant,
-        }
+    pub(crate) fn new(http: &'a Http, token: &'a str) -> Self {
+        Self { http, token }
     }
 
     fn session(&self) -> Vec<(&'static str, String)> {
-        vec![
-            ("authorization", format!("Bearer {}", self.token)),
-            ("tenant_id", self.tenant.to_owned()),
-        ]
+        vec![("authorization", format!("Bearer {}", self.token))]
     }
 
     fn path(id: &str, rest: &str) -> String {
@@ -222,20 +209,6 @@ impl<'a> EndpointsApi<'a> {
             .send(Call {
                 method: reqwest::Method::DELETE,
                 path: Self::path(id, ""),
-                headers: self.session(),
-                query: Vec::new(),
-                body: None,
-                retry: false,
-            })
-            .await
-    }
-
-    /// Issues a new credential. The old one stops working at once.
-    pub async fn rotate_credential(&self, id: &str) -> Result<RotatedCredential> {
-        self.http
-            .send(Call {
-                method: reqwest::Method::POST,
-                path: Self::path(id, "/credential/rotate"),
                 headers: self.session(),
                 query: Vec::new(),
                 body: None,

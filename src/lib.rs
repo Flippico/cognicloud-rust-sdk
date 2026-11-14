@@ -1,7 +1,8 @@
 //! CogniCloud SDK: call AI Gateway endpoints and manage them.
 //!
+//! One API key from Settings → API keys signs every call: an account key for every product, or a product key for one.
 //! This version covers AI Gateway endpoints, browser sessions, mail, databases, the web builder, agents, their runs
-//! and the marketplace. Scraping, vault and activity come later.
+//! and the marketplace.
 
 mod agents;
 mod browser;
@@ -12,6 +13,7 @@ mod endpoints;
 mod error;
 mod files;
 mod http;
+mod keys;
 mod mail;
 mod marketplace;
 mod responses;
@@ -20,10 +22,10 @@ mod stream;
 mod web_builder;
 
 pub use agents::{
-    ActionLog, ActionLogList, ActionLogListOptions, Agent, AgentCredential, AgentKey, AgentKeysApi,
-    AgentStatus, AgentsApi, CreateAgent, CreateSkill, CreatedAgent, PublishAgent, Run,
-    RunErrorCode, RunList, RunListOptions, RunStatus, RunStepDetail, RunWaitOptions, RunsApi,
-    Skill, SkillVersion, SkillsApi, UpdateAgent, UpdateSkill,
+    ActionLog, ActionLogList, ActionLogListOptions, Agent, AgentCredential, AgentStatus, AgentsApi,
+    CreateAgent, CreateSkill, CreatedAgent, PublishAgent, Run, RunErrorCode, RunList,
+    RunListOptions, RunStatus, RunStepDetail, RunWaitOptions, RunsApi, Skill, SkillVersion,
+    SkillsApi, UpdateAgent, UpdateSkill,
 };
 pub use browser::{
     AgentRun, AgentRunStep, BrowserApi, BrowserConcurrency, BrowserPage, BrowserPageAction,
@@ -31,12 +33,9 @@ pub use browser::{
     BrowserSessionsApi, BrowserStatus, CreateBrowserSession, CreateStepRun, ProxyCountry, RunStep,
     StartAgentRun, StepRun,
 };
-pub use client::{
-    encode_tenant, BrowserClient, Client, ClientBuilder, DatabaseClient, EndpointClient, Locale,
-    Options,
-};
+pub use client::{encode_tenant, Client, ClientBuilder, EndpointClient, Locale, Options};
 pub use database::{
-    DatabaseAction, DatabaseActionList, DatabaseActionListOptions, DatabaseApi, DatabaseKey,
+    DatabaseAction, DatabaseActionList, DatabaseActionListOptions, DatabaseApi, DatabaseData,
     DatabaseTable, HostedDatabase, QueryResult, ResultColumn, SelectQuery, Statement, TableApi,
     TableColumn, WriteQuery,
 };
@@ -44,12 +43,13 @@ pub use embeddings::{Embedding, EmbeddingInput, EmbeddingsRequest, EmbeddingsRes
 pub use endpoints::{
     CreateEndpoint, CreatedEndpoint, DailyUsage, DailyUsageRange, Endpoint, EndpointStatus,
     EndpointUsage, EndpointsApi, FieldMapping, FinishReason, InvokeResponse, InvokeUsage,
-    RotatedCredential, UpdateEndpoint,
+    UpdateEndpoint,
 };
 pub use error::{Error, Result};
 pub use files::{
     image_part, input_file, input_image, input_text, pdf_part, text_part, ImageType, MAX_FILE_BYTES,
 };
+pub use keys::{parse_key, KeyKind, ParsedKey};
 pub use mail::{
     CreatedMailbox, MailApi, MailConnectionSettings, MailDnsRecord, MailDomain, MailDomainList,
     MailDomainsApi, MailServerEndpoint, Mailbox, MailboxList, MailboxListOptions,

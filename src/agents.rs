@@ -156,17 +156,6 @@ pub struct SkillVersion {
     pub created_at: String,
 }
 
-/// A `cga_` key. The full key is shown only when it is created in the dashboard.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentKey {
-    pub id: String,
-    pub name: String,
-    pub prefix: String,
-    pub created_at: String,
-    pub last_used_at: Option<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionLog {
@@ -435,32 +424,9 @@ impl<'a> AgentsApi<'a> {
             .await
     }
 
-    /// `cga_` keys. Managing keys needs the person's own sign-in, not a key.
-    pub fn keys(&self) -> AgentKeysApi<'_> {
-        AgentKeysApi {
-            service: &self.service,
-        }
-    }
-
     /// The agents service's action log, newest first.
     pub async fn actions(&self, options: ActionLogListOptions) -> Result<ActionLogList> {
         self.service.actions(options).await
-    }
-}
-
-pub struct AgentKeysApi<'a> {
-    service: &'a Service<'a>,
-}
-
-impl AgentKeysApi<'_> {
-    pub async fn list(&self) -> Result<Vec<AgentKey>> {
-        self.service.get("/keys".to_owned()).await
-    }
-
-    pub async fn revoke(&self, id: &str) -> Result<()> {
-        self.service
-            .send::<_, ()>(Method::DELETE, format!("/keys/{}", encode(id)), None)
-            .await
     }
 }
 

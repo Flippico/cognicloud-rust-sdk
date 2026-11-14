@@ -113,11 +113,8 @@ pub struct MailApi<'a> {
 }
 
 impl<'a> MailApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &str, tenant: &str) -> Self {
-        let headers = vec![
-            ("authorization", format!("Bearer {token}")),
-            ("tenant_id", tenant.to_owned()),
-        ];
+    pub(crate) fn new(http: &'a Http, token: &str) -> Self {
+        let headers = vec![("authorization", format!("Bearer {token}"))];
         Self { http, headers }
     }
 

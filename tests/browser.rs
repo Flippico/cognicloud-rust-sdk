@@ -6,6 +6,10 @@ use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+const KEY: &str =
+    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 fn session() -> serde_json::Value {
     json!({
         "id": "b903c5d0",
@@ -25,8 +29,7 @@ fn session() -> serde_json::Value {
 
 async fn client(server: &MockServer) -> Client {
     Client::builder()
-        .token("amadeus-token")
-        .tenant("acme")
+        .api_key(KEY)
         .browser_base_url(format!("{}/v1/browser", server.uri()))
         .build()
         .unwrap()
@@ -37,8 +40,7 @@ async fn starts_lists_reads_and_stops_sessions_at_the_browser_base() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/browser/sessions"))
-        .and(header("authorization", "Bearer amadeus-token"))
-        .and(header("tenant_id", "acme"))
+        .and(header("authorization", BEARER))
         .and(body_json(json!({ "timeoutMinutes": 15 })))
         .respond_with(ResponseTemplate::new(201).set_body_json(session()))
         .expect(1)
@@ -134,7 +136,6 @@ async fn saves_a_session_as_a_profile_and_starts_from_it() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/browser/sessions/b903c5d0/profile"))
-        .and(header("tenant_id", "acme"))
         .and(body_json(json!({ "name": "shop login" })))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "id": "5f1c9a2e",
@@ -245,28 +246,33 @@ async fn a_session_takes_a_window_size_and_returns_it() {
 }
 
 #[tokio::test]
-async fn a_browser_key_alone_sends_no_tenant_and_refuses_a_blank_key() {
-    use cognicloud_sdk::BrowserClient;
-
+async fn a_browser_key_sends_no_tenant_and_a_blank_key_is_refused() {
     for key in ["", "   "] {
-        assert!(matches!(BrowserClient::new(key), Err(Error::Config(_))));
+        let error = Client::builder().api_key(key).build().unwrap_err();
+        assert_eq!(error.code(), "missing_key");
     }
 
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/browser/profiles"))
-        .and(header("authorization", "Bearer cgb_abc"))
+        .and(header(
+            "authorization",
+            "Bearer cc_br_6163_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
         .expect(1)
         .mount(&server)
         .await;
-    let browser =
-        BrowserClient::with_base_url("cgb_abc", format!("{}/v1/browser", server.uri())).unwrap();
-    assert!(browser.browser().profiles().await.unwrap().is_empty());
+    let client = Client::builder()
+        .api_key("cc_br_6163_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        .browser_base_url(format!("{}/v1/browser", server.uri()))
+        .build()
+        .unwrap();
+    assert!(client.browser().profiles().await.unwrap().is_empty());
     let received = server.received_requests().await.unwrap();
     assert!(
         received[0].headers.get("tenant_id").is_none(),
-        "a browser key names its workspace"
+        "a key names its workspace"
     );
 }
 

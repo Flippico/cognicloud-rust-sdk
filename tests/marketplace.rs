@@ -3,6 +3,10 @@ use serde_json::json;
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+const KEY: &str =
+    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 fn template() -> serde_json::Value {
     json!({
         "slug": "web-researcher",
@@ -24,8 +28,7 @@ fn template() -> serde_json::Value {
 
 fn client(server: &MockServer) -> Client {
     Client::builder()
-        .token("amadeus-token")
-        .tenant("acme")
+        .api_key(KEY)
         .marketplace_base_url(format!("{}/v1/marketplace", server.uri()))
         .build()
         .unwrap()
@@ -36,8 +39,7 @@ async fn lists_templates_by_category_and_reads_one() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/marketplace/templates"))
-        .and(header("authorization", "Bearer amadeus-token"))
-        .and(header("tenant_id", "acme"))
+        .and(header("authorization", BEARER))
         .and(query_param("category", "research"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([template()])))
         .expect(1)

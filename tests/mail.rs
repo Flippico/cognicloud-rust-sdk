@@ -3,6 +3,10 @@ use serde_json::json;
 use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+const KEY: &str =
+    "cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BEARER: &str = "Bearer cc_acc_636f676e69636c6f7564_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 fn mailbox() -> serde_json::Value {
     json!({
         "id": "7c1f0c2e-6a5b-4d3e-9f10-1a2b3c4d5e6f",
@@ -16,8 +20,7 @@ fn mailbox() -> serde_json::Value {
 
 async fn client(server: &MockServer) -> Client {
     Client::builder()
-        .token("amadeus-token")
-        .tenant("acme")
+        .api_key(KEY)
         .mail_base_url(format!("{}/v1/mail", server.uri()))
         .build()
         .unwrap()
@@ -28,8 +31,7 @@ async fn creates_a_mailbox_and_returns_its_password_once() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/mail/mailboxes"))
-        .and(header("authorization", "Bearer amadeus-token"))
-        .and(header("tenant_id", "acme"))
+        .and(header("authorization", BEARER))
         .and(body_json(json!({ "localPart": "support" })))
         .respond_with(
             ResponseTemplate::new(201)

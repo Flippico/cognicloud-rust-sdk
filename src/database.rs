@@ -19,19 +19,6 @@ struct DatabaseList {
     items: Vec<HostedDatabase>,
 }
 
-/// `access` is `read` or `write`. `prefix` tells keys apart; the secret is shown only when a key is created.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DatabaseKey {
-    pub id: String,
-    pub database_id: String,
-    pub name: String,
-    pub access: String,
-    pub prefix: String,
-    pub created_at: String,
-    pub last_used_at: Option<String>,
-}
-
 /// `action` is `create_database`, `delete_database`, `create_key` or `revoke_key`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -145,13 +132,24 @@ struct Order {
     desc: bool,
 }
 
-fn auth(key: &str) -> Vec<(&'static str, String)> {
-    vec![("authorization", format!("Bearer {key}"))]
+/// The key for the data routes, and the database an account key names (`x-database-id`).
+#[derive(Clone, Copy)]
+pub(crate) struct DataAuth<'a> {
+    pub(crate) key: &'a str,
+    pub(crate) database: Option<&'a str>,
+}
+
+fn auth(key: DataAuth<'_>) -> Vec<(&'static str, String)> {
+    let mut headers = vec![("authorization", format!("Bearer {}", key.key))];
+    if let Some(database) = key.database {
+        headers.push(("x-database-id", database.to_owned()));
+    }
+    headers
 }
 
 async fn post<T: DeserializeOwned>(
     http: &Http,
-    key: &str,
+    key: DataAuth<'_>,
     path: String,
     body: Value,
     retry: bool,
@@ -292,7 +290,7 @@ impl WriteQuery<'_> {
 /// One table in the `public` schema. Table and column names are checked against the database.
 pub struct TableApi<'a> {
     http: &'a Http,
-    key: &'a str,
+    key: DataAuth<'a>,
     path: String,
 }
 
@@ -352,7 +350,7 @@ impl TableApi<'_> {
 
 pub(crate) async fn query(
     http: &Http,
-    key: &str,
+    key: DataAuth<'_>,
     sql: &str,
     params: &[Value],
 ) -> Result<QueryResult> {
@@ -362,7 +360,7 @@ pub(crate) async fn query(
 
 pub(crate) async fn transaction(
     http: &Http,
-    key: &str,
+    key: DataAuth<'_>,
     statements: &[Statement],
 ) -> Result<Vec<QueryResult>> {
     let body = json!({ "statements": statements });
@@ -371,7 +369,7 @@ pub(crate) async fn transaction(
     Ok(results.results)
 }
 
-pub(crate) async fn tables(http: &Http, key: &str) -> Result<Vec<DatabaseTable>> {
+pub(crate) async fn tables(http: &Http, key: DataAuth<'_>) -> Result<Vec<DatabaseTable>> {
     let list: TableList = http
         .send(Call {
             method: reqwest::Method::GET,
@@ -385,7 +383,7 @@ pub(crate) async fn tables(http: &Http, key: &str) -> Result<Vec<DatabaseTable>>
     Ok(list.tables)
 }
 
-pub(crate) fn table<'a>(http: &'a Http, key: &'a str, name: &str) -> TableApi<'a> {
+pub(crate) fn table<'a>(http: &'a Http, key: DataAuth<'a>, name: &str) -> TableApi<'a> {
     TableApi {
         http,
         key,
@@ -393,27 +391,30 @@ pub(crate) fn table<'a>(http: &'a Http, key: &'a str, name: &str) -> TableApi<'a
     }
 }
 
-/// Creates and removes hosted Postgres databases. Needs a signed-in person's token; a key is refused.
+/// Creates, lists and removes hosted Postgres databases, and queries them with [`DatabaseApi::data`].
 pub struct DatabaseApi<'a> {
     http: &'a Http,
     token: &'a str,
-    tenant: &'a str,
 }
 
 impl<'a> DatabaseApi<'a> {
-    pub(crate) fn new(http: &'a Http, token: &'a str, tenant: &'a str) -> Self {
-        Self {
-            http,
-            token,
-            tenant,
-        }
+    pub(crate) fn new(http: &'a Http, token: &'a str) -> Self {
+        Self { http, token }
     }
 
     fn headers(&self) -> Vec<(&'static str, String)> {
-        vec![
-            ("authorization", format!("Bearer {}", self.token)),
-            ("tenant_id", self.tenant.to_owned()),
-        ]
+        vec![("authorization", format!("Bearer {}", self.token))]
+    }
+
+    /// SQL and the query builder. Pass `database_id` with an account key; a key for one database needs none.
+    pub fn data(&self, database_id: Option<&'a str>) -> DatabaseData<'a> {
+        DatabaseData {
+            http: self.http,
+            auth: DataAuth {
+                key: self.token,
+                database: database_id,
+            },
+        }
     }
 
     fn call(&self, method: reqwest::Method, path: String) -> Call<'static> {
@@ -459,20 +460,6 @@ impl<'a> DatabaseApi<'a> {
         self.http.send::<Value>(call).await.map(|_| ())
     }
 
-    /// Active keys, newest first. Keys are created in the dashboard and shown there once.
-    pub async fn keys(&self, id: &str) -> Result<Vec<DatabaseKey>> {
-        let path = format!("/databases/{}/keys", encode(id));
-        self.http.send(self.call(reqwest::Method::GET, path)).await
-    }
-
-    /// The key stops working on its next request.
-    pub async fn revoke_key(&self, id: &str, key_id: &str) -> Result<()> {
-        let path = format!("/databases/{}/keys/{}", encode(id), encode(key_id));
-        let mut call = self.call(reqwest::Method::DELETE, path);
-        call.retry = false;
-        self.http.send::<Value>(call).await.map(|_| ())
-    }
-
     /// Runs one SQL statement in your own database as its owner, with `$1`, `$2` for `params`. It has the same limits
     /// as a key. Never retried, because it may change data.
     pub async fn query(&self, id: &str, sql: &str, params: &[Value]) -> Result<QueryResult> {
@@ -505,5 +492,33 @@ impl<'a> DatabaseApi<'a> {
             call.query.push(("cursor", cursor));
         }
         self.http.send(call).await
+    }
+}
+
+/// Queries one database: the one a database key is limited to, or the one an account key names.
+pub struct DatabaseData<'a> {
+    http: &'a Http,
+    auth: DataAuth<'a>,
+}
+
+impl<'a> DatabaseData<'a> {
+    /// Runs one SQL statement, with `$1`, `$2` for `params`. It stops after 15 seconds and returns at most 1,000 rows
+    /// and 5 MB. Never retried, because it may change data.
+    pub async fn query(&self, sql: &str, params: &[Value]) -> Result<QueryResult> {
+        query(self.http, self.auth, sql, params).await
+    }
+
+    /// Runs 1 to 20 statements that commit together, or none do. Needs a write key. Never retried.
+    pub async fn transaction(&self, statements: &[Statement]) -> Result<Vec<QueryResult>> {
+        transaction(self.http, self.auth, statements).await
+    }
+
+    /// Tables and views in the `public` schema that this key can read.
+    pub async fn tables(&self) -> Result<Vec<DatabaseTable>> {
+        tables(self.http, self.auth).await
+    }
+
+    pub fn table(&self, name: &str) -> TableApi<'a> {
+        table(self.http, self.auth, name)
     }
 }
