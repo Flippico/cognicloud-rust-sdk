@@ -20,7 +20,7 @@ Built on `reqwest` with `rustls`. Every request and response is a typed `serde` 
 Create the keys in the dashboard under **Settings → API keys**. Each is shown once.
 
 - An **account key** (`cc_acc_...`) names the workspace and acts as the person who created it. Every client needs one.
-- A **product key** reaches one product: `cc_gw_` AI Gateway, `cc_db_` Database, `cc_br_` Browser, `cc_ml_` Mail, `cc_ag_` Agents. It can be narrowed to one resource, such as one endpoint, database or agent. Add one for each product you call.
+- A **product key** reaches one product: `cc_gw_` AI Gateway, `cc_db_` Database, `cc_br_` Browser, `cc_ml_` Mail, `cc_ag_` Agents, `cc_st_` Storage. It can be narrowed to one resource, such as one endpoint, database or agent. Add one for each product you call.
 
 Every call to a product sends both keys: the product key as the Bearer token and the account key in the `x-cognicloud-account-key` header. The servers refuse each key on its own: an account key alone gets `403`, a product key alone gets `401`.
 
@@ -284,6 +284,51 @@ db.query("INSERT INTO members (id, user_id) VALUES ($1, $2)", &[json!(id), json!
 
 `cc.database().query(&database.id, sql, params)` and `cc.database().tables(&database.id)` also work without `data`. `cc.database()` also has `list`, `get`, `delete` and `actions`.
 
+## Storage
+
+Buckets and objects, with the account key and a storage key (`cc_st_`).
+
+```rust
+use cognicloud_sdk::{
+    Client, CreateStorageBucket, StorageDeleteOptions, StorageDownloadOptions,
+    StorageObjectListOptions, StorageUploadOptions,
+};
+
+let client = Client::builder()
+    .account_key(account_key)
+    .product_key(storage_key)
+    .build()?;
+let storage = client.storage();
+
+storage.buckets().create(CreateStorageBucket { name: "photos".into(), description: None }).await?;
+storage.folders().create("photos", "2026/").await?;
+storage.objects().upload("photos", "2026/a.jpg", bytes, StorageUploadOptions {
+    content_type: Some("image/jpeg".into()),
+}).await?;
+
+let whole = storage.objects().download("photos", "2026/a.jpg", StorageDownloadOptions::default()).await?;
+let meta = storage.objects().metadata("photos", "2026/a.jpg").await?;
+
+// Every page of a listing: call `next` until it returns None, or join them with `all`.
+let mut pages = storage.objects().pages("photos", StorageObjectListOptions {
+    prefix: Some("2026/".into()),
+    ..Default::default()
+});
+while let Some(page) = pages.next().await {
+    for object in page?.objects {
+        println!("{} {}", object.key, object.size);
+    }
+}
+
+storage.objects().delete("photos", "2026/a.jpg").await?;
+storage.buckets().delete("photos", StorageDeleteOptions { force: true }).await?;
+```
+
+- `buckets()` has `list`, `get`, `update` and `delete`. Deleting a bucket that still holds objects fails with `409` (`conflict`) unless `force` is set.
+- `objects()` has `list`, `pages`, `upload`, `download`, `metadata` and `delete`. `download` takes `StorageDownloadOptions { range }` with a `StorageRange::Span(start, end)`, `From(start)` or `Last(n)`.
+- An upload is at most 100 MB and is never retried. The content type defaults to `application/octet-stream`.
+- Keys are checked before a request is sent. A key or prefix with an empty middle segment, a `.` or `..` segment, a leading `/` or a control character fails with `invalid_key`. A trailing `/` is allowed.
+
 ## Web builder
 
 Build a React application and host it at `https://<subdomain>.cognicloud.dev`. Leave out `repo_url` to start from a Vite + React starter. Each person can have 3 applications. The web builder takes the account key alone for now (see [API keys](#api-keys)).
@@ -507,8 +552,14 @@ match endpoint.invoke::<_, serde_json::Value>(&json!({ "input": "Hi" })).await {
 | `web_builder_base_url` | `https://cognicloud.dev/api/v1/web-builder` | Web builder service. |
 | `agents_base_url` | `https://cognicloud.dev/api/v1/agents` | Agents service: agents, skills and runs. |
 | `marketplace_base_url` | `https://cognicloud.dev/api/v1/marketplace` | Agent templates. |
+| `storage_base_url` | `https://cognicloud.dev/api/v1/storage` | Storage service: buckets and objects. |
 
-Set them on the builder, next to the required `account_key`, or with `Options` for `EndpointClient::with_options`.
+Set them on the builder, next to the required `account_key`, or with `Options` for `EndpointClient::with_options`. `Options` is non-exhaustive, so start from `Options::default()` and set the fields you need:
+
+```rust
+let mut options = cognicloud_sdk::Options::default();
+options.storage_base_url = "https://staging.example.test/api/v1/storage".to_owned();
+```
 
 ## Migrating from 1.x
 

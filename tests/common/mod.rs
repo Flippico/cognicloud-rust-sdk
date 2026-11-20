@@ -15,6 +15,8 @@ pub const DATABASE: &str =
     "cc_db_636f676e69636c6f7564_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 pub const AGENTS: &str =
     "cc_ag_636f676e69636c6f7564_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+pub const STORAGE: &str =
+    "cc_st_636f676e69636c6f7564_ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss";
 
 pub const ACCOUNT_HEADER: &str = "x-cognicloud-account-key";
 
@@ -35,5 +37,6 @@ impl WithKeys for ClientBuilder {
             .product_key(MAIL)
             .product_key(DATABASE)
             .product_key(AGENTS)
+            .product_key(STORAGE)
     }
 }

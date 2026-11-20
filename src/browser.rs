@@ -117,11 +117,12 @@ impl<'a> BrowserApi<'a> {
     pub async fn import_profile(&self, name: &str, archive: Vec<u8>) -> Result<BrowserProfile> {
         self.http
             .send_raw(RawCall {
+                method: reqwest::Method::POST,
                 path: "/profiles/import".to_owned(),
                 headers: self.headers()?,
                 query: vec![("name", name.to_owned())],
                 body: archive,
-                content_type: "application/gzip",
+                content_type: "application/gzip".to_owned(),
             })
             .await
     }
@@ -380,6 +381,7 @@ impl BrowserSessionsApi<'_> {
         self.api
             .http
             .send_raw(RawCall {
+                method: reqwest::Method::POST,
                 path: format!(
                     "/sessions/{}/step-runs/{}/file",
                     crate::client::encode(id),
@@ -388,7 +390,7 @@ impl BrowserSessionsApi<'_> {
                 headers: self.api.headers()?,
                 query: vec![("name", name.to_owned())],
                 body: file,
-                content_type: "application/octet-stream",
+                content_type: "application/octet-stream".to_owned(),
             })
             .await
     }

@@ -16,6 +16,7 @@ use crate::keys::{read_product, require_kind, KeyKind};
 use crate::mail::MailApi;
 use crate::marketplace::MarketplaceApi;
 use crate::responses::{ResponseResult, ResponsesRequest};
+use crate::storage::StorageApi;
 use crate::stream::ResponseStream;
 use crate::web_builder::WebBuilderApi;
 
@@ -36,8 +37,10 @@ impl Locale {
     }
 }
 
-/// Settings shared by every client. The defaults match the JavaScript SDK.
+/// Settings shared by every client. The defaults match the JavaScript SDK. Start from `Options::default()` and set the
+/// fields you need; the struct is non-exhaustive, so it cannot be built with a struct literal outside this crate.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Options {
     /// Default `https://cognicloud.dev/api/v1/ai-gateway`.
     pub base_url: String,
@@ -58,6 +61,8 @@ pub struct Options {
     pub agents_base_url: String,
     /// The marketplace's base. Default `https://cognicloud.dev/api/v1/marketplace`.
     pub marketplace_base_url: String,
+    /// The storage service's base. Default `https://cognicloud.dev/api/v1/storage`.
+    pub storage_base_url: String,
 }
 
 impl Default for Options {
@@ -73,6 +78,7 @@ impl Default for Options {
             web_builder_base_url: "https://cognicloud.dev/api/v1/web-builder".to_owned(),
             agents_base_url: "https://cognicloud.dev/api/v1/agents".to_owned(),
             marketplace_base_url: "https://cognicloud.dev/api/v1/marketplace".to_owned(),
+            storage_base_url: "https://cognicloud.dev/api/v1/storage".to_owned(),
         }
     }
 }
@@ -177,7 +183,7 @@ impl EndpointClient {
         self.credentials.auth(Some(KeyKind::Gateway)).headers()
     }
 
-    /// Sends the body through the endpoint's request mapping. Choose the response type: [`InvokeResponse`] is
+    /// Sends the body through the endpoint's request mapping. Choose the response type: [`InvokeResponse`](crate::InvokeResponse) is
     /// the shape every model returns, or deserialise into your own struct.
     ///
     /// Never retried, because a retried call can be billed twice.
@@ -297,7 +303,8 @@ impl ClientBuilder {
         self
     }
 
-    /// A product key: `cc_gw_` AI Gateway, `cc_db_` Database, `cc_br_` Browser, `cc_ml_` Mail or `cc_ag_` Agents. It
+    /// A product key: `cc_gw_` AI Gateway, `cc_db_` Database, `cc_br_` Browser, `cc_ml_` Mail, `cc_ag_` Agents or
+    /// `cc_st_` Storage. It
     /// must be from the account key's workspace. A second key for the same product replaces the first.
     pub fn product_key(mut self, product_key: impl Into<String>) -> Self {
         self.product_keys.push(product_key.into());
@@ -354,6 +361,11 @@ impl ClientBuilder {
         self
     }
 
+    pub fn storage_base_url(mut self, storage_base_url: impl Into<String>) -> Self {
+        self.options.storage_base_url = storage_base_url.into();
+        self
+    }
+
     pub fn build(self) -> Result<Client> {
         let credentials = Credentials::resolve(
             self.account_key.as_deref().unwrap_or(""),
@@ -371,6 +383,7 @@ impl ClientBuilder {
             web_builder: service(&self.options.web_builder_base_url)?,
             agents: service(&self.options.agents_base_url)?,
             marketplace: service(&self.options.marketplace_base_url)?,
+            storage: service(&self.options.storage_base_url)?,
             http: http(&self.options)?,
             options: self.options,
             credentials,
@@ -389,6 +402,7 @@ pub struct Client {
     web_builder: Http,
     agents: Http,
     marketplace: Http,
+    storage: Http,
 }
 
 impl Client {
@@ -453,6 +467,11 @@ impl Client {
     /// Agent templates. Sends the account key alone; it has no product key yet.
     pub fn marketplace(&self) -> MarketplaceApi<'_> {
         MarketplaceApi::new(&self.marketplace, self.credentials.auth(None))
+    }
+
+    /// Buckets, objects and folders. Needs the Storage product key.
+    pub fn storage(&self) -> StorageApi<'_> {
+        StorageApi::new(&self.storage, self.credentials.auth(Some(KeyKind::Storage)))
     }
 }
 

@@ -2,6 +2,7 @@ use crate::error::{Error, Result};
 
 /// What a key reaches: the whole workspace, or one product.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KeyKind {
     Account,
     Gateway,
@@ -10,9 +11,10 @@ pub enum KeyKind {
     Mail,
     Agents,
     Vault,
+    Storage,
 }
 
-const PREFIXES: [(&str, KeyKind); 7] = [
+const PREFIXES: [(&str, KeyKind); 8] = [
     ("cc_acc_", KeyKind::Account),
     ("cc_gw_", KeyKind::Gateway),
     ("cc_db_", KeyKind::Database),
@@ -20,6 +22,7 @@ const PREFIXES: [(&str, KeyKind); 7] = [
     ("cc_ml_", KeyKind::Mail),
     ("cc_ag_", KeyKind::Agents),
     ("cc_vt_", KeyKind::Vault),
+    ("cc_st_", KeyKind::Storage),
 ];
 
 const RETIRED: [&str; 7] = ["cc_live_", "ccag_", "cga_", "cgb_", "cgd_", "cgm_", "cgv_"];
@@ -89,6 +92,7 @@ pub(crate) fn product_label(kind: KeyKind) -> &'static str {
         KeyKind::Mail => "Mail",
         KeyKind::Agents => "Agents",
         KeyKind::Vault => "Vault",
+        KeyKind::Storage => "Storage",
     }
 }
 

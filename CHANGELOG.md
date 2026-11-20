@@ -2,7 +2,25 @@
 
 All notable changes to this crate are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows [Semantic Versioning](https://semver.org/).
 
-## [2.0.0] - Unreleased
+## [3.0.0] - 2026-11-20
+
+### Breaking
+- `KeyKind` and `Options` are now `#[non_exhaustive]`, so later products can be added without another major release. A `match` on `KeyKind` needs a wildcard arm. `Options` can no longer be built with a struct literal, even with `..Default::default()`; start from `Options::default()` and set the fields you need.
+- Storage is added (`KeyKind::Storage`, `cc_st_`), which is why this is a major release: it changes `KeyKind`.
+
+### Added
+- `client.storage()` manages buckets, objects and folders with a storage product key (`cc_st_`), sent with the account key like every product. `storage_base_url` on the builder points it at another environment; the default is `https://cognicloud.dev/api/v1/storage`.
+- `storage().buckets()`: `list`, `create`, `get`, `update` (a `None` field is unchanged, `Some(None)` clears the description) and `delete` with `StorageDeleteOptions { force }`. A non-empty bucket without `force` fails with `409` and code `conflict`.
+- `storage().objects()`: `list` with prefix, delimiter, cursor and limit; `pages` for every page of a listing, one request per `next()` call, with `all()` to join them; `upload` (default content type `application/octet-stream`, sent once and never retried); `download` with an optional `StorageRange` (`Span`, `From`, `Last`), returning bytes; `metadata`; and `delete`.
+- `storage().folders().create(bucket, prefix)`.
+- The storage key checks run before any request. A key, prefix or folder that is empty, has an empty segment in the middle, a `.` or `..` segment, a leading `/` or a control character fails with `Error::Key` and code `invalid_key`, as does a bucket name that is `.`, `..`, empty or contains a slash. A single trailing `/` is allowed on keys and prefixes, and an empty listing prefix is allowed, following the service's rules. The checks stop URL normalisation from acting on a different object.
+- `Http` sends a bytes-returning call for downloads and a method-aware raw call for uploads; `StorageApi`, `StorageObjectPages` and the storage models are exported from the crate root.
+
+### Changed
+- `Options` gains `storage_base_url`.
+- The product-key docs list `cc_st_`.
+
+## [2.0.0] - 2026-11-14
 
 ### Breaking
 - An account key and a product key work in a pair. Every call to a product sends the product key as the Bearer token and the account key in the `x-cognicloud-account-key` header. An account key alone is refused (403), and a product key alone is refused (401).

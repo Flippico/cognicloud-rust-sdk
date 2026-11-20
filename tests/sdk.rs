@@ -35,10 +35,9 @@ fn endpoint() -> Value {
 }
 
 fn options(server: &MockServer) -> Options {
-    Options {
-        base_url: server.uri(),
-        ..Options::default()
-    }
+    let mut options = Options::default();
+    options.base_url = server.uri();
+    options
 }
 
 #[tokio::test]
@@ -74,15 +73,11 @@ async fn never_retries_an_invoke() {
         .mount(&server)
         .await;
 
-    let client = EndpointClient::with_options(
-        "e1",
-        ACCOUNT,
-        GATEWAY,
-        &Options {
-            max_retries: 3,
-            ..options(&server)
-        },
-    )
+    let client = EndpointClient::with_options("e1", ACCOUNT, GATEWAY, &{
+        let mut options = options(&server);
+        options.max_retries = 3;
+        options
+    })
     .unwrap();
     let error = client
         .invoke::<_, Value>(&json!({ "input": "Hi" }))

@@ -27,11 +27,12 @@ pub(crate) struct Call<'a> {
 
 /// A body sent as it is, with its own content type. An upload is sent once, never retried.
 pub(crate) struct RawCall<'a> {
+    pub method: Method,
     pub path: String,
     pub headers: Vec<(&'static str, String)>,
     pub query: Vec<(&'a str, String)>,
     pub body: Vec<u8>,
-    pub content_type: &'static str,
+    pub content_type: String,
 }
 
 #[derive(Default, serde::Deserialize)]
@@ -58,6 +59,17 @@ fn backoff(attempt: u32) -> Duration {
 
 impl Http {
     pub(crate) async fn send<T: DeserializeOwned>(&self, call: Call<'_>) -> Result<T> {
+        let bytes = self.exchange(call, "application/json").await?;
+        let bytes: &[u8] = if bytes.is_empty() { b"null" } else { &bytes };
+        serde_json::from_slice(bytes).map_err(|error| Error::Decode(error.to_string()))
+    }
+
+    /// The body as it is, for a download. Retried like any read.
+    pub(crate) async fn send_bytes(&self, call: Call<'_>) -> Result<Vec<u8>> {
+        self.exchange(call, "*/*").await
+    }
+
+    async fn exchange(&self, call: Call<'_>, accept: &'static str) -> Result<Vec<u8>> {
         let retries = if call.retry { self.max_retries } else { 0 };
         let mut attempt = 0;
         loop {
@@ -65,7 +77,7 @@ impl Http {
                 .client
                 .request(call.method.clone(), target(&self.base_url, &call.path))
                 .timeout(self.timeout)
-                .header("accept", "application/json")
+                .header("accept", accept)
                 .header("accept-language", self.locale.as_str())
                 .query(&call.query);
             for (name, value) in &call.headers {
@@ -94,9 +106,7 @@ impl Http {
             let status = response.status();
             if status.is_success() {
                 let bytes = response.bytes().await.map_err(Error::Network)?;
-                let bytes: &[u8] = if bytes.is_empty() { b"null" } else { &bytes };
-                return serde_json::from_slice(bytes)
-                    .map_err(|error| Error::Decode(error.to_string()));
+                return Ok(bytes.to_vec());
             }
             if is_retryable(status.as_u16()) && attempt < retries {
                 tokio::time::sleep(backoff(attempt)).await;
@@ -112,7 +122,7 @@ impl Http {
     pub(crate) async fn send_raw<T: DeserializeOwned>(&self, call: RawCall<'_>) -> Result<T> {
         let mut request = self
             .client
-            .post(target(&self.base_url, &call.path))
+            .request(call.method, target(&self.base_url, &call.path))
             .timeout(self.timeout)
             .header("accept", "application/json")
             .header("accept-language", self.locale.as_str())

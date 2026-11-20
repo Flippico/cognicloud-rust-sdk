@@ -2,7 +2,7 @@
 //!
 //! Every call to a product sends a product key and the account key from Settings → API keys together. The web builder
 //! and the marketplace take the account key alone for now. This version covers AI Gateway endpoints, browser sessions,
-//! mail, databases, the web builder, agents, their runs and the marketplace.
+//! mail, databases, the web builder, agents, their runs, the marketplace and storage.
 
 mod agents;
 mod browser;
@@ -19,6 +19,7 @@ mod mail;
 mod marketplace;
 mod responses;
 mod secret;
+mod storage;
 mod stream;
 mod web_builder;
 
@@ -59,6 +60,12 @@ pub use mail::{
 pub use marketplace::{MarketplaceApi, Template, TemplatePublisher, TemplateSkill};
 pub use responses::{McpTool, ResponseResult, ResponsesRequest, ToolChoice};
 pub use secret::Secret;
+pub use storage::{
+    CreateStorageBucket, StorageApi, StorageBucket, StorageBucketsApi, StorageDeleteOptions,
+    StorageDownloadOptions, StorageFoldersApi, StorageObject, StorageObjectListOptions,
+    StorageObjectMetadata, StorageObjectPage, StorageObjectPages, StorageObjectsApi, StorageRange,
+    StorageUploadOptions, StorageVisibility, UpdateStorageBucket,
+};
 pub use stream::{ResponseStream, StreamEvent};
 pub use web_builder::{
     Application, CreateApplication, GithubRepositories, GithubRepository, UpdateApplication,

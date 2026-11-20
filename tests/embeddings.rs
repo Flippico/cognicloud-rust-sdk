@@ -6,15 +6,11 @@ use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn endpoint(server: &MockServer) -> cognicloud_sdk::EndpointClient {
-    cognicloud_sdk::EndpointClient::with_options(
-        "e1",
-        ACCOUNT,
-        GATEWAY,
-        &cognicloud_sdk::Options {
-            base_url: server.uri(),
-            ..Default::default()
-        },
-    )
+    cognicloud_sdk::EndpointClient::with_options("e1", ACCOUNT, GATEWAY, &{
+        let mut options = cognicloud_sdk::Options::default();
+        options.base_url = server.uri();
+        options
+    })
     .unwrap()
 }
 

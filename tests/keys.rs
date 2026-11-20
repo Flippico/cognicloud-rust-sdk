@@ -113,6 +113,7 @@ async fn a_missing_product_key_fails_at_the_call_before_any_request() {
         .mail_base_url(server.uri())
         .database_base_url(server.uri())
         .agents_base_url(server.uri())
+        .storage_base_url(server.uri())
         .build()
         .unwrap();
 
@@ -158,6 +159,10 @@ async fn a_missing_product_key_fails_at_the_call_before_any_request() {
         (
             "Agents",
             key_error(client.runs().get("r1").await.map(|_| ())),
+        ),
+        (
+            "Storage",
+            key_error(client.storage().buckets().list().await.map(|_| ())),
         ),
     ];
     for (label, error) in errors {
@@ -236,6 +241,7 @@ fn parse_key_reads_the_kind_and_workspace_of_each_key() {
         (BROWSER, KeyKind::Browser),
         (MAIL, KeyKind::Mail),
         (AGENTS, KeyKind::Agents),
+        (STORAGE, KeyKind::Storage),
         ("cc_vt_636f676e69636c6f7564_vvvv", KeyKind::Vault),
     ] {
         assert_eq!(parse_key(key).unwrap().kind, kind, "{key}");
